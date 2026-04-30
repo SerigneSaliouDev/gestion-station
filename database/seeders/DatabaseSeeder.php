@@ -17,5 +17,7 @@ class DatabaseSeeder extends Seeder
         
         // Assurez-vous que votre seeder personnalisé est appelé
         $this->call(RolePermissionSeederCustom::class);
+        $this->call([StationsTableSeeder::class]);
+    
     }
 }

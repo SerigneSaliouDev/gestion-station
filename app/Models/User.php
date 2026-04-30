@@ -6,7 +6,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
-use Illuminate\Support\Facades\Session; // Importation pour la gestion potentielle de la session
+use Illuminate\Support\Facades\Session;
 
 class User extends Authenticatable
 {
@@ -16,11 +16,11 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        // 'role', // ⚠️ Laisser si vous utilisez toujours le champ simple 'role'
         'station_id',
-        'active_station_id', // ⬅️ NOUVEAU : ID de la station de travail actuelle (pour Chief/Admin)
+        'active_station_id',
         'telephone',
         'statut',
+        'is_active',
     ];
 
     protected $hidden = [
@@ -30,42 +30,33 @@ class User extends Authenticatable
 
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'is_active' => 'boolean',
     ];
 
     // Relations
     
-    // Relation avec la station d'affectation permanente
     public function station()
     {
         return $this->belongsTo(Station::class);
     }
     
-    // Relation avec la station active (si vous voulez une relation dédiée)
     public function activeStationRelation()
     {
         return $this->belongsTo(Station::class, 'active_station_id');
     }
 
-    // Relation avec les stations auxquelles l'utilisateur a accès (pour Chief/Admin)
-    // NOTE : Vous devez avoir défini une relation many-to-many (ex: belongsToMany) 
-    // ou une portée globale si Chief/Admin voit tout.
- public function stations() 
-{
-    // Si l'utilisateur est un Manager, on retourne l'objet Relation "station"
-    // Laravel peut ensuite appliquer withCount sur cette relation BelongsTo/HasOne.
-    if ($this->hasRole('manager')) {
-        return $this->station(); 
+    public function stations() 
+    {
+        if ($this->hasRole('manager')) {
+            return $this->station(); 
+        }
+        
+        if ($this->hasRole('chief') || $this->hasRole('administrateur')) {
+            return Station::query(); 
+        }
+        
+        return Station::whereRaw('1 = 0');
     }
-    
-    // Pour les Chiefs/Admins, on retourne le Query Builder de toutes les Stations.
-    // Cela permet au contrôleur d'appliquer ->withCount(...) avant ->get().
-    if ($this->hasRole('chief') || $this->hasRole('administrateur')) {
-        return Station::query(); 
-    }
-    
-    // Fallback : renvoie un Query Builder qui ne retourne rien si l'utilisateur n'a pas de rôle défini
-    return Station::whereRaw('1 = 0'); // Retourne un Query Builder vide par sécurité
-}
 
     public function shifts()
     {
@@ -76,7 +67,6 @@ class User extends Authenticatable
 
     public function isChief()
     {
-        // Utilisez la méthode Spatie pour plus de robustesse
         return $this->hasRole('chief');
     }
 
@@ -87,58 +77,235 @@ class User extends Authenticatable
 
     public function isAdmin()
     {
-        return $this->hasRole('administrateur'); // Assurez-vous que le nom du rôle est exact
+        return $this->hasRole('administrateur');
+    }
+
+    public function isChargeOperations()
+    {
+        return $this->hasRole('charge-operations');
+    }
+
+    public function isPompiste()
+    {
+        return $this->hasRole('pompiste');
+    }
+
+    // --- NOUVELLES MÉTHODES POUR LES RÔLES ---
+
+    /**
+     * Obtenir le nom du rôle principal de l'utilisateur
+     */
+    public function getRoleName()
+    {
+        if ($this->roles->isNotEmpty()) {
+            return $this->roles->first()->name;
+        }
+        
+        return 'user'; // Rôle par défaut
     }
 
     /**
-     * Vérifie si l'utilisateur a un rôle spécifique (utilise la méthode Spatie si possible)
-     * Garder cette fonction uniquement si vous n'avez pas confiance dans le trait HasRoles
+     * Obtenir le nom du rôle formaté pour l'affichage
      */
-    // public function hasRole($role)
-    // {
-    //     return parent::hasRole($role); // Utilise la méthode native HasRoles
-    // }
-    
-    // --- LOGIQUE DE SÉLECTION DE STATION ACTIVE ---
+    public function getRoleDisplayName()
+    {
+        $role = $this->getRoleName();
+        
+        $displayNames = [
+            'administrateur' => 'Administrateur',
+            'admin' => 'Administrateur',
+            'manager' => 'Manager',
+            'gerant' => 'Gérant',
+            'chief' => 'Chef des Opérations',
+            'charge-operations' => 'Chargé d\'Opérations',
+            'charge_operations' => 'Chargé d\'Opérations',
+            'pompiste' => 'Pompiste',
+            'user' => 'Utilisateur',
+        ];
+        
+        return $displayNames[$role] ?? ucfirst(str_replace(['-', '_'], ' ', $role));
+    }
 
     /**
-     * Définit la station active de l'utilisateur.
-     * Cette méthode est appelée par StationController@selectStation
+     * Obtenir la couleur du badge selon le rôle
      */
+    public function getRoleBadgeColor()
+    {
+        $role = $this->getRoleName();
+        
+        $colors = [
+            'administrateur' => 'danger',
+            'admin' => 'danger',
+            'manager' => 'warning',
+            'gerant' => 'warning',
+            'chief' => 'info',
+            'charge-operations' => 'primary',
+            'charge_operations' => 'primary',
+            'pompiste' => 'success',
+            'user' => 'secondary',
+        ];
+        
+        return $colors[$role] ?? 'secondary';
+    }
+
+    /**
+     * Obtenir l'icône selon le rôle
+     */
+    public function getRoleIcon()
+    {
+        $role = $this->getRoleName();
+        
+        $icons = [
+            'administrateur' => 'fas fa-user-shield',
+            'admin' => 'fas fa-user-shield',
+            'manager' => 'fas fa-user-tie',
+            'gerant' => 'fas fa-user-tie',
+            'chief' => 'fas fa-user-cog',
+            'charge-operations' => 'fas fa-user-check',
+            'charge_operations' => 'fas fa-user-check',
+            'pompiste' => 'fas fa-gas-pump',
+            'user' => 'fas fa-user',
+        ];
+        
+        return $icons[$role] ?? 'fas fa-user';
+    }
+
+    /**
+     * Obtenir la couleur du badge selon le statut
+     */
+    public function getStatusBadgeColor()
+    {
+        if ($this->statut === 'active' || $this->is_active) {
+            return 'success';
+        }
+        
+        if ($this->statut === 'inactive') {
+            return 'danger';
+        }
+        
+        if ($this->statut === 'pending') {
+            return 'warning';
+        }
+        
+        return 'secondary';
+    }
+
+    /**
+     * Obtenir le nom du statut formaté
+     */
+    public function getStatusDisplayName()
+    {
+        if ($this->statut === 'active' || $this->is_active) {
+            return 'Actif';
+        }
+        
+        if ($this->statut === 'inactive') {
+            return 'Inactif';
+        }
+        
+        if ($this->statut === 'pending') {
+            return 'En attente';
+        }
+        
+        return $this->statut ?? 'Inconnu';
+    }
+
+    /**
+     * Vérifier si l'utilisateur est actif
+     */
+    public function isActive()
+    {
+        return $this->statut === 'active' || $this->is_active;
+    }
+
+    /**
+     * Obtenir l'initial du nom pour les avatars
+     */
+    public function getInitial()
+    {
+        return strtoupper(substr($this->name, 0, 1));
+    }
+
+    /**
+     * Obtenir la couleur d'avatar selon le nom
+     */
+    public function getAvatarColor()
+    {
+        $colors = ['primary', 'success', 'info', 'warning', 'danger', 'dark'];
+        $index = ord($this->getInitial()) % count($colors);
+        return $colors[$index];
+    }
+
+    /**
+     * Obtenir le format d'affichage du téléphone
+     */
+    public function getFormattedPhone()
+    {
+        if (!$this->telephone) {
+            return 'Non défini';
+        }
+        
+        // Format simple pour les numéros de téléphone
+        $phone = preg_replace('/\D/', '', $this->telephone);
+        
+        if (strlen($phone) === 9) {
+            return preg_replace('/(\d{2})(\d{3})(\d{2})(\d{2})/', '$1 $2 $3 $4', $phone);
+        }
+        
+        return $this->telephone;
+    }
+
+    /**
+     * Obtenir le nombre de jours depuis la création du compte
+     */
+    public function getDaysSinceCreation()
+    {
+        return $this->created_at->diffInDays(now());
+    }
+
+    /**
+     * Obtenir la date de dernière connexion formatée
+     */
+    public function getLastLoginFormatted()
+    {
+        if (!$this->last_login_at) {
+            return 'Jamais connecté';
+        }
+        
+        if ($this->last_login_at->isToday()) {
+            return 'Aujourd\'hui à ' . $this->last_login_at->format('H:i');
+        }
+        
+        if ($this->last_login_at->isYesterday()) {
+            return 'Hier à ' . $this->last_login_at->format('H:i');
+        }
+        
+        return $this->last_login_at->format('d/m/Y à H:i');
+    }
+
+    // --- LOGIQUE DE SÉLECTION DE STATION ACTIVE ---
+
     public function setActiveStation(int $stationId): void
     {
-        // Les Managers utilisent leur station_id permanent, mais pour l'homogénéité du contrôleur, 
-        // on peut stocker l'ID dans 'active_station_id'.
-        
         if ($this->isManager()) {
-            // Un Manager n'a qu'une seule station: on s'assure que la station_id et l'active_station_id sont alignées
             $this->station_id = $stationId;
         }
         
         $this->active_station_id = $stationId;
         $this->save();
         
-        // Optionnel : s'assurer que la session reflète la station active
         Session::put('active_station_id', $stationId); 
     }
 
-    /**
-     * Récupère l'ID de la station active, en priorisant l'affectation permanente pour le Manager.
-     */
     public function getActiveStation(): ?int
     {
         if ($this->isManager()) {
-            // Le Manager utilise TOUJOURS sa station permanente
             return $this->station_id;
         }
         
-        // Pour les Chiefs/Admins, utilise l'ID sélectionné (ou la session/cache si 'active_station_id' est null)
         return $this->active_station_id ?? Session::get('active_station_id');
     }
 
-    /**
-     * Récupère le modèle Station actif.
-     */
     public function getActiveStationModel(): ?Station
     {
         $stationId = $this->getActiveStation();
@@ -146,17 +313,12 @@ class User extends Authenticatable
         return $stationId ? Station::find($stationId) : null;
     }
 
-    /**
-     * Vérifie si l'utilisateur a accès à une station spécifique (pour StationController@selectStation)
-     */
     public function hasAccessToStation(int $stationId): bool
     {
         if ($this->isChief() || $this->isAdmin()) {
-            // Les Chiefs/Admins ont accès à tout, ou vous vérifiez la relation many-to-many ici
             return true;
         }
         
-        // Le Manager n'a accès qu'à sa station permanente
         return $this->isManager() && $this->station_id === $stationId;
     }
 
@@ -171,4 +333,173 @@ class User extends Authenticatable
     {
         return $this->getActiveStationModel() ? $this->getActiveStationModel()->code : null;
     }
+
+    /**
+     * Accesseur pour le nom complet avec rôle
+     */
+    public function getNameWithRoleAttribute()
+    {
+        return $this->name . ' (' . $this->getRoleDisplayName() . ')';
+    }
+
+    /**
+     * Accesseur pour l'email masqué
+     */
+    public function getMaskedEmailAttribute()
+    {
+        if (!$this->email) {
+            return null;
+        }
+        
+        $parts = explode('@', $this->email);
+        if (count($parts) !== 2) {
+            return $this->email;
+        }
+        
+        $username = $parts[0];
+        $domain = $parts[1];
+        
+        if (strlen($username) <= 2) {
+            $maskedUsername = $username;
+        } else {
+            $maskedUsername = substr($username, 0, 2) . '***' . substr($username, -1);
+        }
+        
+        return $maskedUsername . '@' . $domain;
+    }
+
+    /**
+     * Scope pour filtrer les utilisateurs actifs
+     */
+    public function scopeActive($query)
+    {
+        return $query->where(function($q) {
+            $q->where('statut', 'active')
+              ->orWhere('is_active', true);
+        });
+    }
+
+    /**
+     * Scope pour filtrer par rôle
+     */
+    public function scopeByRole($query, $roleName)
+    {
+        return $query->whereHas('roles', function($q) use ($roleName) {
+            $q->where('name', $roleName);
+        });
+    }
+
+    /**
+     * Scope pour filtrer les utilisateurs avec station
+     */
+    public function scopeHasStation($query)
+    {
+        return $query->whereNotNull('station_id');
+    }
+
+    /**
+     * Scope pour filtrer les utilisateurs sans station
+     */
+    public function scopeWithoutStation($query)
+    {
+        return $query->whereNull('station_id');
+    }
+
+    /**
+     * Scope pour rechercher des utilisateurs
+     */
+    public function scopeSearch($query, $searchTerm)
+    {
+        return $query->where(function($q) use ($searchTerm) {
+            $q->where('name', 'LIKE', "%{$searchTerm}%")
+              ->orWhere('email', 'LIKE', "%{$searchTerm}%")
+              ->orWhere('telephone', 'LIKE', "%{$searchTerm}%");
+        });
+    }
+
+    /**
+     * Méthode pour obtenir tous les rôles disponibles formatés pour un select
+     */
+    public static function getAvailableRoles()
+    {
+        return [
+            'administrateur' => 'Administrateur',
+            'manager' => 'Manager',
+            'chief' => 'Chef des Opérations',
+            'charge-operations' => 'Chargé d\'Opérations',
+            'pompiste' => 'Pompiste',
+        ];
+    }
+
+    /**
+     * Méthode pour obtenir toutes les couleurs de badge de rôle
+     */
+    public static function getRoleBadgeColors()
+    {
+        return [
+            'administrateur' => 'danger',
+            'manager' => 'warning',
+            'chief' => 'info',
+            'charge-operations' => 'primary',
+            'pompiste' => 'success',
+        ];
+    }
+
+    /**
+     * Vérifier si l'utilisateur peut modifier un autre utilisateur
+     */
+    public function canEditUser(User $otherUser)
+    {
+        // Un admin peut modifier tout le monde
+        if ($this->isAdmin()) {
+            return true;
+        }
+        
+        // Un chief ne peut pas modifier les admins
+        if ($this->isChief() && $otherUser->isAdmin()) {
+            return false;
+        }
+        
+        // Un manager ne peut modifier que les utilisateurs de sa station
+        if ($this->isManager()) {
+            return $otherUser->station_id === $this->station_id && !$otherUser->isAdmin();
+        }
+        
+        return false;
+    }
+
+    /**
+     * Vérifier si l'utilisateur peut supprimer un autre utilisateur
+     */
+    public function canDeleteUser(User $otherUser)
+    {
+        // Personne ne peut se supprimer soi-même
+        if ($this->id === $otherUser->id) {
+            return false;
+        }
+        
+        // Un admin peut supprimer tout le monde sauf les autres admins
+        if ($this->isAdmin()) {
+            return !$otherUser->isAdmin();
+        }
+        
+        // Un chief ne peut supprimer que les managers et pompistes
+        if ($this->isChief()) {
+            return $otherUser->isManager() || $otherUser->isPompiste();
+        }
+        
+        // Un manager ne peut supprimer que les pompistes de sa station
+        if ($this->isManager()) {
+            return $otherUser->isPompiste() && $otherUser->station_id === $this->station_id;
+        }
+        
+        return false;
+    }
+    
+public function getLayoutName()
+{
+    if ($this->role === 'admin') return 'admin-layout';
+    if ($this->role === 'gerant') return 'gerant-layout';
+    return 'app-layout';
+}
 }

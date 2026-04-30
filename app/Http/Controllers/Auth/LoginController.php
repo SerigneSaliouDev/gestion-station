@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Session;
 
 class LoginController extends Controller
 {
@@ -13,14 +15,14 @@ class LoginController extends Controller
      *
      * @var string
      */
-    protected $redirectTo = '/'; // MODIFIEZ ICI
+    protected $redirectTo = '/';
 
     /**
-     * Affiche le formulaire de connexion.
+     * Crée une nouvelle instance du contrôleur.
      */
-    public function showLoginForm()
+    public function __construct()
     {
-        return view('auth.login');
+        $this->middleware('guest')->except('logout');
     }
 
     /**
@@ -28,70 +30,73 @@ class LoginController extends Controller
      */
     public function login(Request $request)
     {
-        $this->validateLogin($request);
+        // Valider les données
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
 
-        if ($this->attemptLogin($request)) {
-            return $this->sendLoginResponse($request);
+        // Tenter la connexion
+        if (Auth::attempt([
+            'email' => $request->email,
+            'password' => $request->password
+        ], $request->filled('remember'))) {
+            
+            $request->session()->regenerate();
+            
+            // Redirection selon le rôle
+            $user = Auth::user();
+            
+            // Définir la station active selon le rôle
+            $this->setActiveStationForUser($user);
+            
+            if ($user->isManager()) {
+                // Vérifier si le manager a une station assignée
+                if ($user->station_id) {
+                    // Stocker la station dans la session
+                    Session::put('current_station_id', $user->station_id);
+                    
+                    // RÉDIRIGER DIRECTEMENT VERS LA PAGE DE SAISIE DES INDEX
+                    return redirect()->route('manager.index_form');
+                } else {
+                    // Si aucun manager n'a de station, afficher une erreur
+                    return redirect()->route('manager.no-station');
+                }
+            } elseif ($user->isChief()) {
+                // Le chef d'opérations voit toutes les stations
+                return redirect()->route('station.select');
+            } elseif ($user->isAdmin()) {
+                // L'administrateur va au tableau de bord admin
+                return redirect()->route('admin.users.index');
+            }
+            
+            return redirect()->intended($this->redirectTo);
         }
 
-        return $this->sendFailedLoginResponse($request);
-    }
-
-    /**
-     * Valide la tentative de connexion.
-     */
-    protected function validateLogin(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|string|email',
-            'password' => 'required|string',
+        // Si la connexion échoue
+        throw ValidationException::withMessages([
+            'email' => __('auth.failed'),
         ]);
     }
 
     /**
-     * Tente de connecter l'utilisateur.
+     * Définit la station active pour l'utilisateur selon son rôle
      */
-    protected function attemptLogin(Request $request)
+    protected function setActiveStationForUser($user)
     {
-        return Auth::attempt(
-            $this->credentials($request), $request->filled('remember')
-        );
-    }
-
-    /**
-     * Récupère les informations d'identification de la requête.
-     */
-    protected function credentials(Request $request)
-    {
-        return $request->only('email', 'password');
-    }
-
-    /**
-     * Envoie la réponse après une connexion réussie.
-     */
-    protected function sendLoginResponse(Request $request)
-    {
-        $request->session()->regenerate();
-
-        $user = Auth::user();
-        
-        // REDIRECTION PERSONNALISÉE
-        if ($user->hasRole('chief')) {
-            return redirect()->route('chief.validations');
-        } elseif ($user->hasRole('manager')) {
-            return redirect()->route('manager.index_form');
+        if ($user->isManager()) {
+            // Pour un manager, la station active est toujours sa station assignée
+            if ($user->station_id) {
+                $user->setActiveStation($user->station_id);
+                Session::put('active_station_id', $user->station_id);
+                Session::put('current_station', $user->station);
+            }
+        } elseif ($user->isChief() || $user->isAdmin()) {
+            // Pour les chefs/admins, on ne définit pas de station par défaut
+            // Ils devront en sélectionner une
+            Session::forget('active_station_id');
+            Session::forget('current_station');
         }
-        
-        // Par défaut
-        return redirect()->intended($this->redirectPath());
-    }
-
-    /**
-     * Obtient le chemin de redirection après connexion.
-     */
-    protected function redirectPath()
-    {
-        return '/';
     }
 
     /**

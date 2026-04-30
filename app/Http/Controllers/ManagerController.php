@@ -9,19 +9,27 @@ use Illuminate\Support\Facades\Storage;
 use Barryvdh\DomPDF\Facade\Pdf as PDF;
 use Carbon\Carbon;
 use App\Models\ShiftSaisie;
+use App\Models\Tank;
+use App\Models\StockMovement; 
 use App\Models\ShiftPompeDetail;
+use App\Services\StockOperationService;
 use App\Models\Depense;
 use App\Models\Station;
 use App\Models\User;
 
 class ManagerController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('auth');
-        $this->middleware('checkStation')->except(['showIndexForm']);
-        $this->middleware('role:manager')->except(['login', 'logout']);
-    }
+     protected $stockService;
+     
+       public function __construct(StockOperationService $stockService)
+        {
+            $this->middleware('auth');
+            $this->middleware('checkStation')->except(['showIndexForm']);
+            $this->middleware('role:manager')->except(['login', 'logout']);
+            $this->middleware('stock.guard:shift')->only(['storeIndex']);
+            
+            $this->stockService = $stockService;
+        }
 
     /**
      * Affiche le formulaire de saisie des index avec la station du gérant
@@ -43,6 +51,7 @@ class ManagerController extends Controller
         $pumps = [
             ['name' => 'Pompe 1', 'fuel_type' => 'Gazole', 'unit_price' => 750, 'pump_id' => 1],
             ['name' => 'Pompe 2', 'fuel_type' => 'Super', 'unit_price' => 850, 'pump_id' => 2],
+            ['name' => 'Pompe 3', 'fuel_type' => 'Essence Pirogue', 'unit_price' => 900, 'pump_id' => 3],
         ];
 
         return view('manager.saisie-index', [
@@ -51,6 +60,8 @@ class ManagerController extends Controller
             'station' => $station,
         ]);
     }
+    
+
 
     /**
      * Récupérer les prix actuels des carburants
@@ -90,7 +101,6 @@ class ManagerController extends Controller
     {
         $user = Auth::user();
         
-        // Vérifier si le gérant est assigné à une station
         if ($user->isManager() && !$user->station_id) {
             return redirect()->back()
                 ->with('error', 'Vous n\'êtes pas assigné à une station.');
@@ -112,116 +122,606 @@ class ManagerController extends Controller
             'depenses.*.justificatif_file' => 'nullable|file|max:5120',
         ]);
 
-        // Calcul des totaux pompes
-        $totalLiters = 0;
-        $totalSales = 0;
-
-        foreach ($request->pumps as $pump) {
-            $opening = floatval($pump['opening_index']);
-            $closing = floatval($pump['closing_index']);
-            $returnVal = floatval($pump['total_return'] ?? 0);
-            $unitPrice = floatval($pump['unit_price']);
-
-            if ($closing >= $opening) {
-                $literage = ($closing - $opening) - $returnVal;
-                if ($literage < 0) $literage = 0;
-            } else {
-                $literage = 0;
-            }
-
-            $totalLiters += $literage;
-            $totalSales += $literage * $unitPrice;
-        }
-
-        $cashDeposit = floatval($request->cash_deposit_amount);
+        DB::beginTransaction();
         
-        // Calculer les écarts avec la fonction helper
-        $ecarts = $this->calculateEcart($cashDeposit, $totalSales);
-        $ecartInitial = $ecarts['initial'];
+        try {
+            $totalLiters = 0;
+            $totalSales = 0;
+            
+            // Regrouper les ventes par type de carburant
+            $salesByFuelType = [];
 
-        // Créer la saisie AVEC station_id
-        $shift = ShiftSaisie::create([
-            'date_shift' => $request->shift_date,
-            'shift' => $request->shift_time,
-            'responsable' => $request->responsible_name,
-            'total_litres' => $totalLiters,
-            'total_ventes' => $totalSales,
-            'versement' => $cashDeposit,
-            'ecart' => $ecartInitial, // Écart initial sans dépenses
-            'user_id' => auth()->id(),
-            'station_id' => $user->station_id, // AJOUTÉ
-            'statut' => 'en_attente', // Par défaut en attente de validation
-        ]);
+            foreach ($request->pumps as $pump) {
+                $opening = floatval($pump['opening_index']);
+                $closing = floatval($pump['closing_index']);
+                $returnVal = floatval($pump['total_return'] ?? 0);
+                $unitPrice = floatval($pump['unit_price']);
 
-        // Enregistrer les détails des pompes
-        foreach ($request->pumps as $pump) {
-            $opening = floatval($pump['opening_index']);
-            $closing = floatval($pump['closing_index']);
-            $returnVal = floatval($pump['total_return'] ?? 0);
-            $unitPrice = floatval($pump['unit_price']);
+                if ($closing >= $opening) {
+                    $literage = ($closing - $opening) - $returnVal;
+                    if ($literage < 0) $literage = 0;
+                } else {
+                    $literage = 0;
+                }
 
-            if ($closing >= $opening) {
-                $literage = ($closing - $opening) - $returnVal;
-                if ($literage < 0) $literage = 0;
-            } else {
-                $literage = 0;
+                $totalLiters += $literage;
+                $totalSales += $literage * $unitPrice;
+                
+                $fuelType = $this->normalizeFuelType($pump['fuel_type']);
+                if (!isset($salesByFuelType[$fuelType])) {
+                    $salesByFuelType[$fuelType] = [
+                        'quantity' => 0,
+                        'total_amount' => 0,
+                        'pumps' => []
+                    ];
+                }
+                $salesByFuelType[$fuelType]['quantity'] += $literage;
+                $salesByFuelType[$fuelType]['total_amount'] += $literage * $unitPrice;
+                $salesByFuelType[$fuelType]['pumps'][] = $pump['name'];
             }
 
-            ShiftPompeDetail::create([
-                'shift_saisie_id' => $shift->id,
-                'pompe_nom' => $pump['name'],
-                'carburant' => $pump['fuel_type'],
-                'prix_unitaire' => $unitPrice,
-                'index_ouverture' => $opening,
-                'index_fermeture' => $closing,
-                'retour_litres' => $returnVal,
-                'litrage_vendu' => $literage,
-                'montant_ventes' => $literage * $unitPrice,
+            $cashDeposit = floatval($request->cash_deposit_amount);
+            $ecartInitial = $cashDeposit - $totalSales;
+
+            // Créer le shift
+            $shift = ShiftSaisie::create([
+                'date_shift' => $request->shift_date,
+                'shift' => $request->shift_time,
+                'responsable' => $request->responsible_name,
+                'total_litres' => $totalLiters,
+                'total_ventes' => $totalSales,
+                'versement' => $cashDeposit,
+                'ecart' => $ecartInitial,
+                'user_id' => auth()->id(),
+                'station_id' => $user->station_id,
+                'statut' => 'en_attente',
+            ]);
+
+            // Enregistrer les détails des pompes
+            foreach ($request->pumps as $pump) {
+                $opening = floatval($pump['opening_index']);
+                $closing = floatval($pump['closing_index']);
+                $returnVal = floatval($pump['total_return'] ?? 0);
+                $unitPrice = floatval($pump['unit_price']);
+
+                if ($closing >= $opening) {
+                    $literage = ($closing - $opening) - $returnVal;
+                    if ($literage < 0) $literage = 0;
+                } else {
+                    $literage = 0;
+                }
+
+                ShiftPompeDetail::create([
+                    'shift_saisie_id' => $shift->id,
+                    'pompe_nom' => $pump['name'],
+                    'carburant' => $pump['fuel_type'],
+                    'prix_unitaire' => $unitPrice,
+                    'index_ouverture' => $opening,
+                    'index_fermeture' => $closing,
+                    'retour_litres' => $returnVal,
+                    'litrage_vendu' => $literage,
+                    'montant_ventes' => $literage * $unitPrice,
+                ]);
+            }
+
+            
+            
+            $stockUpdates = [];
+            
+            foreach ($salesByFuelType as $fuelType => $saleData) {
+                if ($saleData['quantity'] > 0) {
+                    try {
+                        // 1. Trouver la cuve appropriée
+                        $tank = Tank::where('station_id', $user->station_id)
+                            ->where(function($query) use ($fuelType) {
+                                $query->where('fuel_type', 'LIKE', $fuelType)
+                                      ->orWhere('fuel_type', 'LIKE', '%' . $fuelType . '%');
+                                      
+                                if (in_array($fuelType, ['gasoil', 'gazole', 'diesel'])) {
+                                    $query->orWhere('fuel_type', 'LIKE', '%gasoil%')
+                                          ->orWhere('fuel_type', 'LIKE', '%gazole%')
+                                          ->orWhere('fuel_type', 'LIKE', '%diesel%');
+                                }
+                            })
+                            ->orderBy('current_volume', 'desc')
+                            ->first();
+
+                        if (!$tank) {
+                            throw new \Exception(sprintf(
+                                "Aucune cuve trouvée pour: %s",
+                                ucfirst($fuelType)
+                            ));
+                        }
+
+                        // 2. Vérifier le stock
+                        if ($tank->current_volume < $saleData['quantity']) {
+                            throw new \Exception(sprintf(
+                                "Stock insuffisant dans la cuve %s (%s). Disponible: %s L, Vendu: %s L",
+                                $tank->number,
+                                $tank->fuel_type,
+                                number_format($tank->current_volume, 2),
+                                number_format($saleData['quantity'], 2)
+                            ));
+                        }
+
+                        $ancienStock = $tank->current_volume;
+                        $nouveauStock = $ancienStock - $saleData['quantity'];
+                        
+                        // 3. CRÉER UN SEUL STOCK MOVEMENT via le service
+                        $avgPrice = $saleData['total_amount'] / $saleData['quantity'];
+                        
+                        $movementResult = $this->stockService->registerSale([
+                            'station_id' => $user->station_id,
+                            'fuel_type' => $fuelType,
+                            'quantity' => $saleData['quantity'],
+                            'unit_price' => $avgPrice,
+                            'customer_name' => $request->responsible_name . ' (Shift)',
+                            'payment_method' => 'cash',
+                            'tank_number' => $tank->number,
+                            'recorded_by' => $user->id,
+                            'movement_date' => $request->shift_date,
+                            'shift_saisie_id' => $shift->id,
+                            'auto_generated' => true
+                        ]);
+                        
+                        // 4. Mettre à jour la cuve DIRECTEMENT (pas via un nouveau mouvement)
+                        $tank->current_volume = $nouveauStock;
+                        $tank->current_level_cm = $tank->capacity > 0 
+                            ? ($nouveauStock / $tank->capacity) * 250 
+                            : 0;
+                        $tank->last_measurement_date = now();
+                        $tank->save();
+                        
+                        \Log::info('Stock mis à jour pour shift', [
+                            'shift_id' => $shift->id,
+                            'fuel_type' => $fuelType,
+                            'tank_id' => $tank->id,
+                            'movement_id' => $movementResult['movement']->id,
+                            'quantite' => $saleData['quantity'],
+                            'avant' => $ancienStock,
+                            'apres' => $nouveauStock
+                        ]);
+                        
+                        $stockUpdates[$fuelType] = [
+                            'tank_number' => $tank->number,
+                            'tank_fuel_type' => $tank->fuel_type,
+                            'quantity' => $saleData['quantity'],
+                            'before' => $ancienStock,
+                            'after' => $nouveauStock,
+                            'movement_id' => $movementResult['movement']->id
+                        ];
+                        
+                    } catch (\Exception $e) {
+                        \Log::error('Erreur traitement stock shift', [
+                            'fuel_type' => $fuelType,
+                            'shift_id' => $shift->id,
+                            'error' => $e->getMessage()
+                        ]);
+                        throw $e;
+                    }
+                }
+            }
+
+            // Gestion des dépenses
+            $totalDepenses = 0;
+            if ($request->has('depenses')) {
+                foreach ($request->depenses as $index => $depense) {
+                    if (!empty($depense['type']) && floatval($depense['montant']) > 0) {
+                        $depenseData = [
+                            'shift_saisie_id' => $shift->id,
+                            'type_depense' => $depense['type'],
+                            'montant' => floatval($depense['montant']),
+                            'description' => $depense['description'] ?? null,
+                        ];
+
+                        if ($request->hasFile("depenses.{$index}.justificatif_file")) {
+                            $file = $request->file("depenses.{$index}.justificatif_file");
+                            $fileName = time() . '_' . $file->getClientOriginalName();
+                            $filePath = $file->storeAs('justificatifs', $fileName, 'public');
+                            $depenseData['justificatif'] = $filePath;
+                        }
+
+                        Depense::create($depenseData);
+                        $totalDepenses += floatval($depense['montant']);
+                    }
+                }
+            }
+
+            $ecartFinal = $cashDeposit - ($totalSales - $totalDepenses);
+            
+            $shift->update([
+                'total_depenses' => $totalDepenses,
+                'ecart_final' => $ecartFinal
+            ]);
+
+            // ========== VÉRIFICATION ANTI-DOUBLON ==========
+            $movementsCount = StockMovement::where('shift_saisie_id', $shift->id)->count();
+            $expectedCount = count(array_filter($salesByFuelType, fn($s) => $s['quantity'] > 0));
+
+            \Log::info('VÉRIFICATION STOCK MOVEMENTS', [
+                'shift_id' => $shift->id,
+                'mouvements_créés' => $movementsCount,
+                'mouvements_attendus' => $expectedCount,
+                'ok' => $movementsCount === $expectedCount
+            ]);
+
+            if ($movementsCount > $expectedCount) {
+                \Log::error('DOUBLONS DÉTECTÉS!', [
+                    'shift_id' => $shift->id,
+                    'attendu' => $expectedCount,
+                    'obtenu' => $movementsCount,
+                    'doublons' => $movementsCount - $expectedCount
+                ]);
+                
+                throw new \Exception('Doublons de mouvements de stock détectés!');
+            }
+
+            DB::commit();
+
+            $stockMessage = '';
+            foreach ($stockUpdates as $fuelType => $update) {
+                $stockMessage .= 
+                    ucfirst($fuelType) . " (Cuve {$update['tank_number']}): " .
+                    "-" . number_format($update['quantity'], 2) . " L " .
+                    "(Stock: " . number_format($update['before'], 2) . " → " . 
+                    number_format($update['after'], 2) . " L). ";
+            }
+
+            return redirect()->route('manager.history')
+                ->with('success', 'Saisie enregistrée avec succès! En attente de validation.')
+                ->with('info', $stockMessage ? "Stock mis à jour: $stockMessage" : '');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Erreur storeIndex', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id(),
             ]);
             
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Erreur: ' . $e->getMessage());
         }
+    }
 
-        // Gestion des dépenses avec fichiers
-        $totalDepenses = 0;
-        if ($request->has('depenses')) {
-            foreach ($request->depenses as $index => $depense) {
-                if (!empty($depense['type']) && floatval($depense['montant']) > 0) {
-                    $depenseData = [
-                        'shift_saisie_id' => $shift->id,
-                        'type_depense' => $depense['type'],
-                        'montant' => floatval($depense['montant']),
-                        'description' => $depense['description'] ?? null,
+private function processShiftStockSales($shift, $salesByFuelType, $request)
+{
+    $results = [];
+    $user = Auth::user();
+    
+    foreach ($salesByFuelType as $fuelType => $saleData) {
+        if ($saleData['quantity'] > 0) {
+            try {
+                // Préparer les données pour le service de synchronisation
+                $saleParams = [
+                    'station_id' => $user->station_id,
+                    'fuel_type' => $fuelType,
+                    'quantity' => $saleData['quantity'],
+                    'unit_price' => $saleData['total_amount'] / $saleData['quantity'],
+                    'recorded_by' => $user->id,
+                    'shift_id' => $shift->id,
+                    'customer_name' => $request->responsible_name . ' (Shift)',
+                    'sale_date' => $request->shift_date
+                ];
+                
+                // Utiliser le service de synchronisation
+                $result = app(StockSyncService::class)->safeSaleRegistration(
+                    $saleParams, 
+                    'shift'
+                );
+                
+                if ($result['success']) {
+                    $results[$fuelType] = [
+                        'success' => true,
+                        'sale_id' => $result['sale_id'],
+                        'movement_id' => $result['movement_id']
                     ];
+                }
+                
+            } catch (\Exception $e) {
+                \Log::error('Erreur traitement shift', [
+                    'fuel_type' => $fuelType,
+                    'error' => $e->getMessage(),
+                    'shift_id' => $shift->id
+                ]);
+                
+                $results[$fuelType] = [
+                    'success' => false,
+                    'error' => $e->getMessage()
+                ];
+                throw $e;
+            }
+        }
+    }
+    
+    return $results;
+}
+    /**
+ * Trouver une cuve adaptée pour un type de carburant
+ */
+    private function findTankForFuelType($stationId, $fuelType)
+    {
+        $normalizedType = $this->normalizeFuelType($fuelType);  // ICI
+        
+        $tank = Tank::where('station_id', $stationId)
+            ->where(function($query) use ($normalizedType, $fuelType) {
+                $query->where('fuel_type', 'LIKE', $normalizedType)
+                      ->orWhere('fuel_type', 'LIKE', $fuelType);
+            })
+            ->orderBy('current_volume', 'desc')
+            ->first();
+        
+        return $tank;
+    }
 
-                    // Gestion du fichier justificatif
-                    if ($request->hasFile("depenses.{$index}.justificatif_file")) {
-                        $file = $request->file("depenses.{$index}.justificatif_file");
-                        $fileName = time() . '_' . $file->getClientOriginalName();
-                        $filePath = $file->storeAs('justificatifs', $fileName, 'public');
-                        
-                        $depenseData['justificatif'] = $filePath;
-                    }
+    public function checkStockForType(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $stationId = $user->station_id;
+            
+            if (!$stationId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non assigné à une station'
+                ], 400);
+            }
 
-                    Depense::create($depenseData);
-                    $totalDepenses += floatval($depense['montant']);
+            $fuelType = strtolower(trim($request->input('fuel_type')));
+            $quantity = (float) $request->input('quantity');
+            
+            if (!$fuelType || $quantity <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Données invalides'
+                ], 400);
+            }
+
+            // ========== GESTION DES ALIAS ==========
+            $fuelAliases = [
+                // Format: alias => type principal
+                'gasoil' => 'gasoil',
+                'gazole' => 'gasoil',
+                
+                
+                'super' => 'super',
+            
+                
+                
+                'essence pirogue' => 'essence pirogue',
+                
+            ];
+            
+            // Normaliser le type de carburant
+            $normalizedType = $this->normalizeFuelType($fuelType);
+            
+            \Log::info('Recherche cuve', [
+                'type_original' => $fuelType,
+                'type_normalise' => $normalizedType,
+                'station_id' => $stationId,
+                'quantite' => $quantity
+            ]);
+            
+            // Chercher la cuve avec le type normalisé
+            $tank = Tank::where('station_id', $stationId)
+                ->where(function($query) use ($normalizedType, $fuelType) {
+                    // 1. Chercher avec le type normalisé
+                    $query->where('fuel_type', 'LIKE', $normalizedType);
+                    
+                    // 2. Chercher avec l'original (au cas où)
+                    $query->orWhere('fuel_type', 'LIKE', $fuelType);
+                    
+                    // 3. Chercher avec recherche partielle
+                    $query->orWhere('fuel_type', 'LIKE', '%' . $normalizedType . '%');
+                    $query->orWhere('fuel_type', 'LIKE', '%' . $fuelType . '%');
+                })
+                ->orderBy('current_volume', 'desc')
+                ->first();
+
+            // Debug: Voir toutes les cuves disponibles
+            if (!$tank) {
+                $allTanks = Tank::where('station_id', $stationId)
+                    ->select('id', 'number', 'fuel_type', 'current_volume', 'capacity')
+                    ->get();
+                
+                \Log::warning('Cuve non trouvée après recherche', [
+                    'type_recherche' => $fuelType,
+                    'type_normalise' => $normalizedType,
+                    'cuves_disponibles' => $allTanks->toArray(),
+                    'requete_sql' => Tank::where('station_id', $stationId)
+                        ->where(function($query) use ($normalizedType, $fuelType) {
+                            $query->where('fuel_type', 'LIKE', $normalizedType)
+                                ->orWhere('fuel_type', 'LIKE', $fuelType);
+                        })
+                        ->toSql()
+                ]);
+            }
+
+            if (!$tank) {
+                // Essayer une recherche plus large
+                $tank = Tank::where('station_id', $stationId)
+                    ->where('current_volume', '>', 0)
+                    ->first();
+                    
+                if ($tank) {
+                    \Log::info('Cuve trouvée avec recherche large', [
+                        'cuve_trouvee' => $tank->toArray(),
+                        'type_recherche' => $fuelType
+                    ]);
+                }
+            }
+
+            if (!$tank) {
+                $availableTanks = Tank::where('station_id', $stationId)
+                    ->select('fuel_type', 'number', 'current_volume')
+                    ->get();
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => sprintf(
+                        "Aucune cuve trouvée pour: %s. Cuves disponibles: %s",
+                        ucfirst($fuelType),
+                        $availableTanks->isEmpty() 
+                            ? 'Aucune cuve' 
+                            : implode(', ', $availableTanks->map(fn($t) => "Cuve {$t->number} ({$t->fuel_type})")->toArray())
+                    ),
+                    'debug' => [
+                        'recherche_originale' => $fuelType,
+                        'recherche_normalisee' => $normalizedType,
+                        'cuves_disponibles' => $availableTanks
+                    ]
+                ]);
+            }
+
+            // Vérifier le stock
+            $availableStock = (float) $tank->current_volume;
+            $isAvailable = $availableStock >= $quantity;
+            
+            if (!$isAvailable) {
+                return response()->json([
+                    'success' => false,
+                    'message' => sprintf(
+                        "Stock insuffisant dans la cuve %s (%s). Disponible: %s L, Requis: %s L",
+                        $tank->number,
+                        ucfirst($tank->fuel_type),
+                        number_format($availableStock, 2),
+                        number_format($quantity, 2)
+                    ),
+                    'available' => false,
+                    'current_stock' => $availableStock
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'available' => true,
+                'current_stock' => $availableStock,
+                'remaining_after' => $availableStock - $quantity,
+                'tank_info' => [
+                    'id' => $tank->id,
+                    'number' => $tank->number,
+                    'fuel_type' => $tank->fuel_type,
+                    'capacity' => $tank->capacity,
+                    'current_volume' => $tank->current_volume,
+                    'fill_percentage' => $tank->capacity > 0 
+                        ? round(($tank->current_volume / $tank->capacity) * 100, 1) 
+                        : 0
+                ],
+                'message' => sprintf(
+                    "Cuve %s (%s): Stock disponible %s L",
+                    $tank->number,
+                    ucfirst($tank->fuel_type),
+                    number_format($availableStock, 2)
+                )
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Erreur checkStockForType', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur serveur: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+public function checkStockBeforeSave(Request $request)
+{
+    try {
+        $salesByFuelType = [
+            'super' => 0,
+            'gazole' => 0,
+        ];
+        
+        // Calculer les quantités par type de carburant
+        foreach ($request->pumps as $pump) {
+            $opening = floatval($pump['opening_index']);
+            $closing = floatval($pump['closing_index']);
+            $returnVal = floatval($pump['total_return'] ?? 0);
+            
+            if ($closing >= $opening) {
+                $literage = ($closing - $opening) - $returnVal;
+                if ($literage < 0) $literage = 0;
+            } else {
+                $literage = 0;
+            }
+            
+            $fuelType = strtolower($pump['fuel_type']);
+            // Normaliser le nom du carburant
+            if ($fuelType == 'gasoil' || $fuelType == 'diesel') {
+                $fuelType = 'gazole';
+            }
+            
+            if (isset($salesByFuelType[$fuelType])) {
+                $salesByFuelType[$fuelType] += $literage;
+            }
+        }
+        
+        // Vérifier chaque type de carburant
+        $results = [];
+        $canProceed = true;
+        $messages = [];
+        
+        foreach ($salesByFuelType as $fuelType => $quantity) {
+            if ($quantity > 0) {
+                $currentStock = \App\Models\StockMovement::currentStock($fuelType);
+                $canSell = $currentStock >= $quantity;
+                
+                $results[$fuelType] = [
+                    'current_stock' => $currentStock,
+                    'quantity' => $quantity,
+                    'can_sell' => $canSell,
+                    'remaining' => $canSell ? $currentStock - $quantity : $currentStock,
+                ];
+                
+                if (!$canSell) {
+                    $canProceed = false;
+                    $fuelName = $fuelType == 'super' ? 'Super' : 'Gasoil';
+                    $messages[] = "Stock insuffisant pour $fuelName: Stock actuel: {$currentStock}L, Vente demandée: {$quantity}L";
                 }
             }
         }
-
-        // Calculer l'écart final AVEC les dépenses
-        $ecartsAvecDepenses = $this->calculateEcart($cashDeposit, $totalSales, $totalDepenses);
-        $ecartFinal = $ecartsAvecDepenses['final'];
         
-        $shift->update([
-            'total_depenses' => $totalDepenses,
-            'ecart_final' => $ecartFinal
+        return response()->json([
+            'success' => true,
+            'can_proceed' => $canProceed,
+            'results' => $results,
+            'message' => $canProceed ? 
+                'Stock suffisant pour toutes les ventes' : 
+                implode(' | ', $messages)
         ]);
-
-        return redirect()->route('manager.history')
-            ->with('success', 'Saisie enregistrée avec succès! En attente de validation du chef d\'opérations.');
-
-            
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Erreur lors de la vérification du stock: ' . $e->getMessage()
+        ], 500);
     }
+}
+
+/**
+ * Helper pour obtenir le prix moyen d'un carburant
+ */
+private function getAveragePriceForFuel($fuelType, $pumps)
+{
+    $totalPrice = 0;
+    $count = 0;
+    
+    foreach ($pumps as $pump) {
+        if (strtolower($pump['fuel_type']) === $fuelType) {
+            $totalPrice += floatval($pump['unit_price']);
+            $count++;
+        }
+    }
+    
+    return $count > 0 ? $totalPrice / $count : 0;
+}
 
     /**
      * Debug pour vérifier les calculs d'écart
@@ -246,25 +746,42 @@ class ManagerController extends Controller
     /**
      * Historique des saisies - Filtré par station pour les gérants
      */
-    public function history()
-    {
-        $user = Auth::user();
-        
-        // Requête de base
-        $query = ShiftSaisie::with(['pompeDetails', 'depenses', 'station'])
-            ->where('user_id', auth()->id());
-        
-        // Les gérants voient seulement leurs saisies de leur station
-        if ($user->isManager()) {
-            $query->where('station_id', $user->station_id);
-        }
-        
-        $saisies = $query->orderBy('date_shift', 'desc')
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
-
-        return view('manager.history', compact('saisies'));
+public function history()
+{
+    $user = Auth::user();
+    
+    $query = ShiftSaisie::with(['pompeDetails', 'depenses', 'station'])
+        ->where('user_id', auth()->id());
+    
+    if ($user->isManager()) {
+        $query->where('station_id', $user->station_id);
     }
+    
+    // AJOUTEZ CECI POUR DÉBOGUER
+    $totalCount = $query->count();
+    $latestShift = $query->latest()->first();
+    
+    \Log::info('Historique des saisies', [
+        'total_saisies' => $totalCount,
+        'derniere_saisie_id' => $latestShift?->id,
+        'derniere_saisie_date' => $latestShift?->date_shift,
+        'derniere_saisie_created_at' => $latestShift?->created_at
+    ]);
+    
+    $saisies = $query->orderBy('date_shift', 'desc')
+        ->orderBy('created_at', 'desc')
+        ->paginate(10);
+        
+    // Afficher la page actuelle
+    \Log::info('Pagination', [
+        'page_actuelle' => $saisies->currentPage(),
+        'par_page' => $saisies->perPage(),
+        'total' => $saisies->total(),
+        'premiere_page' => $saisies->onFirstPage()
+    ]);
+
+    return view('manager.history', compact('saisies'));
+}
 
     /**
      * Afficher une saisie spécifique
@@ -542,7 +1059,7 @@ class ManagerController extends Controller
     {
         $depense = Depense::findOrFail($id);
         $shift = $depense->shiftSaisie;
-        
+                                              
         // Vérifier l'accès
         if ($shift->user_id != auth()->id()) {
             abort(403, 'Accès non autorisé');
@@ -608,6 +1125,22 @@ class ManagerController extends Controller
 
         $filename = 'shift-' . $shift->id . '-' . $shift->date_shift->format('Y-m-d') . '.pdf';
         return $pdf->download($filename);
+    }
+    
+        private function normalizeFuelType($fuelType)
+    {
+        $type = strtolower(trim($fuelType));
+        
+        $mapping = [
+            'gasoil' => 'gazole',
+            'gazole' => 'gazole',
+            
+            'super' => 'super',
+            'essence' => 'super',
+            'essence-pirogue' => 'essence pirogue',
+        ];
+        
+        return $mapping[$type] ?? $type;
     }
 
     /**

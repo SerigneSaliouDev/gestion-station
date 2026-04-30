@@ -13,71 +13,85 @@ class StationsTableSeeder extends Seeder
     public function run()
     {
         // Créer un chef d'opérations (utilise Spatie Role)
-        $chiefRole = Role::where('name', 'chief')->first();
-        if (!$chiefRole) {
-            $chiefRole = Role::create(['name' => 'chief']);
-        }
+        $chiefRole = Role::firstOrCreate(['name' => 'charge-operations']);
         
         $chief = User::firstOrCreate(
             ['email' => 'chief@odyssee.sn'],
             [
                 'name' => 'Chef Opérations',
-                'password' => Hash::make('password'),
+                'password' => Hash::make('Saliou2003'),
             ]
         );
-        $chief->assignRole('chief');
+        $chief->assignRole('charge-operations');
         
-        // Créer des stations
+        // Créer des stations - STATION PILOTE A EN PREMIER
         $stations = [
             [
-                'nom' => 'Odyssée Energie Mermoz',
-                'code' => 'OE001',
+                'nom' => 'Station Pilote A - Mermoz',
+                'code' => 'A', // ← CODE A POUR LA STATION PILOTE
                 'adresse' => 'Rue de Mermoz',
                 'ville' => 'Dakar',
                 'telephone' => '33 889 00 00',
+                'statut' => 'actif',
+                'capacite_super' => 10000,
+                'capacite_gazole' => 15000,
             ],
             [
                 'nom' => 'Odyssée Energie Ouakam',
-                'code' => 'OE002',
+                'code' => 'B',
                 'adresse' => 'Rue de Ouakam',
                 'ville' => 'Dakar',
                 'telephone' => '33 889 00 01',
+                'statut' => 'actif',
+                'capacite_super' => 8000,
+                'capacite_gazole' => 12000,
             ],
             [
                 'nom' => 'Odyssée Energie Pikine',
-                'code' => 'OE003',
+                'code' => 'C',
                 'adresse' => 'Rue de Pikine',
                 'ville' => 'Dakar',
                 'telephone' => '33 889 00 02',
+                'statut' => 'actif',
+                'capacite_super' => 9000,
+                'capacite_gazole' => 13000,
             ],
         ];
         
-        $managerRole = Role::where('name', 'manager')->first();
+        $managerRole = Role::firstOrCreate(['name' => 'manager']);
         
-        foreach ($stations as $stationData) {
+        foreach ($stations as $index => $stationData) {
             $station = Station::firstOrCreate(
                 ['code' => $stationData['code']],
                 $stationData
             );
             
             // Créer un gérant pour chaque station
-            $managerEmail = 'gerant' . $station->code . '@odyssee.sn';
+            $managerEmail = 'gerant' . $stationData['code'] . '@odyssee.sn';
             $manager = User::firstOrCreate(
                 ['email' => $managerEmail],
                 [
                     'name' => 'Gérant ' . $station->nom,
-                    'password' => Hash::make('password'),
+                    'password' => Hash::make('Saliou2003'),
                     'station_id' => $station->id,
                 ]
             );
             
             // Assigner le rôle manager
-            $manager->assignRole('manager');
+            if (!$manager->hasRole('manager')) {
+                $manager->assignRole('manager');
+            }
             
             // Assigner comme responsable de la station
-            $station->update(['responsable_id' => $manager->id]);
+            $station->update(['manager_id' => $manager->id]);
             
-            echo "✓ Station créée: {$station->nom} avec gérant: {$manager->name}\n";
+            echo "✓ Station créée: {$station->nom} (Code: {$station->code}) avec gérant: {$manager->name} ({$managerEmail})\n";
         }
+        
+        echo "\n=== COMPTES CRÉÉS ===\n";
+        echo "Manager Station A: gerantA@odyssee.sn / Saliou2003\n";
+        echo "Manager Station B: gerantB@odyssee.sn / Saliou2003\n";
+        echo "Manager Station C: gerantC@odyssee.sn / Saliou2003\n";
+        echo "Chef Opérations: chief@odyssee.sn / Saliou2003\n";
     }
 }

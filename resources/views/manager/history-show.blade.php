@@ -317,9 +317,6 @@
                 <i class="fas fa-file-pdf"></i> PDF
             </a>
             
-            <a href="{{ route('manager.saisie.print', $shift->id) }}" class="btn btn-secondary" target="_blank">
-                <i class="fas fa-print"></i> Imprimer
-            </a>
             
             <button type="button" class="btn btn-danger" onclick="confirmDelete({{ $shift->id }})">
                 <i class="fas fa-trash"></i> Supprimer

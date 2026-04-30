@@ -13,63 +13,135 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700">
 
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            background: white;
+            background: #f5f7fb;
             margin: 0;
             padding: 0;
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
-            font-family: 'Segoe UI', Arial, sans-serif;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', 'Source Sans Pro', Arial, sans-serif;
         }
 
-        .header {
-            background: linear-gradient(135deg, #FF8C00, #FFA500);
+        .password-wrapper {
+            width: 100%;
+            max-width: 1300px;
+            background: white;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            display: flex;
+            flex-wrap: wrap;
+            margin: 20px;
+        }
+
+        .password-brand {
+            flex: 1;
+            background: linear-gradient(135deg, #FF8C00 0%, #FF6B00 100%);
+            padding: 60px 50px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
             color: white;
-            padding: 40px 20px;
+            min-width: 280px;
+        }
+
+        .brand-content {
+            max-width: 400px;
+            margin: 0 auto;
+            width: 100%;
             text-align: center;
         }
 
-        .logo-container {
-            margin-bottom: 10px;
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
         }
 
         .company-logo {
-            max-width: 350px;
+            max-width: 200px;
+            width: auto;
             height: auto;
+            max-height: 120px;
+            object-fit: contain;
+            margin: 0 auto;
+            display: block;
         }
 
-        .password-container {
-            flex: 1;
+        .brand-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .brand-description {
+            font-size: 16px;
+            line-height: 1.5;
+            opacity: 0.95;
+            margin-bottom: 40px;
+        }
+
+        .brand-features {
+            list-style: none;
+            text-align: left;
+            display: inline-block;
+            margin-top: 20px;
+        }
+
+        .brand-features li {
+            margin-bottom: 15px;
             display: flex;
-            justify-content: center;
             align-items: center;
-            padding: 50px 20px;
+            gap: 12px;
+            font-size: 15px;
         }
 
-        .password-form {
-            width: 100%;
-            max-width: 450px;
+        .brand-features li i {
+            font-size: 18px;
+            width: 24px;
+        }
+
+        .password-form-container {
+            flex: 1;
+            padding: 60px 50px;
             background: white;
-            padding: 50px;
-            border-radius: 10px;
-            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-width: 380px;
         }
 
         .form-title {
-            color: #333;
-            margin-bottom: 25px;
-            font-size: 28px;
-            font-weight: 600;
-            text-align: center;
+            color: #1a1a2e;
+            margin-bottom: 10px;
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .form-subtitle {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 15px;
+            border-left: 3px solid #FF8C00;
+            padding-left: 15px;
         }
 
         .info-text {
-            color: #666;
+            color: #64748b;
+            font-size: 14px;
             line-height: 1.6;
             margin-bottom: 30px;
-            text-align: center;
-            font-size: 15px;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 12px;
         }
 
         .form-group {
@@ -78,30 +150,33 @@
 
         .form-group label {
             display: block;
-            margin-bottom: 10px;
-            color: #555;
-            font-weight: 500;
-            font-size: 15px;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
         }
 
         .input-group {
             position: relative;
+            display: flex;
+            align-items: center;
         }
 
         .form-control {
             width: 100%;
-            padding: 15px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border 0.3s;
-            height: auto;
+            padding: 14px 45px 14px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 15px;
+            transition: all 0.3s;
+            background: #fafbfc;
         }
 
         .form-control:focus {
             border-color: #FF8C00;
             outline: none;
-            box-shadow: 0 0 0 0.2rem rgba(255, 140, 0, 0.25);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
         }
 
         .input-group-append {
@@ -111,81 +186,116 @@
             height: 100%;
             display: flex;
             align-items: center;
-            padding-right: 15px;
+            padding-right: 16px;
         }
 
         .input-group-text {
             background: transparent;
             border: none;
-            color: #777;
+            color: #94a3b8;
         }
 
         .btn-primary {
             width: 100%;
-            padding: 15px;
+            padding: 14px;
             background: #FF8C00;
             color: white;
             border: none;
-            border-radius: 8px;
-            font-size: 18px;
-            font-weight: 600;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: all 0.3s;
             margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
 
         .btn-primary:hover {
             background: #E67E00;
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px -5px rgba(255, 140, 0, 0.3);
         }
 
-        .links {
+        .login-link {
             text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid #edf2f7;
         }
 
-        .links a {
+        .login-link p {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .login-link a {
             color: #FF8C00;
             text-decoration: none;
-            font-weight: 500;
-            display: block;
-            margin-bottom: 12px;
-            font-size: 15px;
+            font-weight: 600;
         }
 
-        .links a:hover {
+        .login-link a:hover {
             text-decoration: underline;
         }
 
-        .separator {
-            border-top: 2px solid #eee;
-            margin: 30px 0;
-        }
-
-        .windows-activation {
-            text-align: center;
-            color: #888;
-            font-size: 13px;
-            margin-top: 40px;
-            padding-top: 25px;
-            border-top: 2px solid #f0f0f0;
-        }
-
         .alert {
-            border-radius: 8px;
+            border-radius: 12px;
             margin-bottom: 25px;
             border: none;
+            padding: 12px 16px;
+            font-size: 14px;
         }
 
-        @media (max-width: 768px) {
-            .company-logo {
-                max-width: 280px;
+        .alert-danger {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .alert-success {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .copyright {
+            text-align: center;
+            margin-top: 35px;
+            font-size: 12px;
+            color: #94a3b8;
+            padding-top: 20px;
+            border-top: 1px solid #edf2f7;
+        }
+
+        .copyright a {
+            color: #FF8C00;
+            text-decoration: none;
+        }
+
+        @media (max-width: 900px) {
+            .password-wrapper {
+                flex-direction: column;
+                margin: 15px;
+                border-radius: 20px;
             }
-            
-            .password-form {
-                padding: 35px 25px;
+            .password-brand {
+                padding: 40px 30px;
             }
-            
-            .header {
+            .password-form-container {
+                padding: 40px 30px;
+                min-width: auto;
+            }
+            .brand-features {
+                display: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .password-form-container {
                 padding: 30px 20px;
+            }
+            .form-title {
+                font-size: 26px;
             }
         }
     </style>
@@ -193,25 +303,34 @@
 
 <body>
 
-<!-- Header avec logo -->
-<div class="header">
-    <div class="logo-container">
-        <img src="{{ asset('images/logo-odyssee.png') }}" alt="ODYSSEE ENERGIE" class="company-logo" onerror="this.style.display='none'">
+<div class="password-wrapper">
+    <!-- Colonne gauche -->
+    <div class="password-brand">
+        <div class="brand-content">
+            <div class="logo-section">
+                <img src="{{ asset('adminlte/assets/img/odysse.jpg') }}" 
+                     alt="ODYSSEE ENERGIE" 
+                     class="company-logo"
+                     onerror="this.onerror=null; this.style.display='none'; this.parentElement.innerHTML += '<div style=\'background:rgba(255,255,255,0.2);border-radius:60px;padding:15px 30px;display:inline-block;\'><i class=\'fas fa-bolt\' style=\'font-size:48px;color:white;\'></i><div style=\'font-size:28px;font-weight:800;letter-spacing:3px;\'>ODYSSEE</div><div style=\'font-size:12px;letter-spacing:2px;\'>ÉNERGIE</div></div>';">
+            </div>
+            <h2 class="brand-title">ODYSSEE ÉNERGIE</h2>
+        
+        </div>
     </div>
-</div>
 
-<!-- Contenu principal -->
-<div class="password-container">
-    <div class="password-form">
+    <!-- Colonne droite -->
+    <div class="password-form-container">
         <h1 class="form-title">Mot de passe oublié</h1>
+        <div class="form-subtitle">Réinitialisez votre mot de passe</div>
 
         <div class="info-text">
-            <p class="mb-0">Mot de passe oublié ? Aucun problème. Indiquez-nous votre adresse email et nous vous enverrons un lien de réinitialisation.</p>
+            <i class="fas fa-info-circle" style="color: #FF8C00; margin-right: 8px;"></i>
+            Indiquez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de passe.
         </div>
 
         @if (session('status'))
-            <div class="alert alert-success mb-4">
-                {{ session('status') }}
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i> {{ session('status') }}
             </div>
         @endif
 
@@ -225,23 +344,27 @@
                 <div class="input-group">
                     <input type="email" id="email" name="email" class="form-control" placeholder="manager@centrepine.com" value="{{ old('email') }}" required autofocus autocomplete="username">
                     <div class="input-group-append">
-                        <div class="input-group-text"><span class="fas fa-envelope"></span></div>
+                        <div class="input-group-text"><i class="fas fa-envelope"></i></div>
                     </div>
                 </div>
             </div>
 
-            <button type="submit" class="btn-primary">Envoyer le lien</button>
+            <button type="submit" class="btn-primary">
+                <i class="fas fa-paper-plane"></i> Envoyer le lien
+            </button>
         </form>
 
-        <div class="separator"></div>
-
-        <div class="links">
-            <a href="{{ route('login') }}">Retour à la connexion</a>
+        <div class="login-link">
+            <p><a href="{{ route('login') }}"><i class="fas fa-arrow-left"></i> Retour à la connexion</a></p>
         </div>
 
-  
+        <div class="copyright">
+            © 2025 ODYSSEE ÉNERGIE. Tous droits réservés.<br>
+            <a href="#">Conditions d'utilisation</a> | <a href="#">Politique de confidentialité</a>
+        </div>
+    </div>
+</div>
 
-<!-- Scripts AdminLTE -->
 <script src="{{ asset('adminlte/plugins/jquery/jquery.min.js') }}"></script>
 <script src="{{ asset('adminlte/plugins/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ asset('adminlte/js/adminlte.min.js') }}"></script>

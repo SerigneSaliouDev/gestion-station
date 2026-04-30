@@ -1,4 +1,4 @@
-<!-- resources/views/layouts/app.blade.php -->
+
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
@@ -14,8 +14,13 @@
 
     <!-- AdminLTE CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2.0/dist/css/adminlte.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="{{ asset('css/oyesse.css') }}" rel="stylesheet">
     
     <!-- Custom CSS pour ODYSSEE -->
     <style>
@@ -83,9 +88,11 @@
                     <i class="far fa-user"></i> {{ Auth::user()->name ?? 'Utilisateur' }}
                 </a>
                 <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
-                    <a href="{{ route('profile.show') }}" class="dropdown-item">
-                        <i class="fas fa-user mr-2"></i> Mon Profil
-                    </a>
+
+                       <a class="dropdown-item" href="{{ route('profile.show') }}">
+                                <i class="fas fa-user mr-2"></i>Profil
+                        </a>
+                   
                     <div class="dropdown-divider"></div>
                     <form method="POST" action="{{ route('logout') }}">
                         @csrf
@@ -135,13 +142,7 @@
                             <p>Suivi des Stocks</p>
                         </a>
                     </li>
-                    <!-- Dans resources/views/layouts/sidebar.blade.php ou votre menu 
-                    <li class="nav-item">
-                        <a href="{{ route('manager.edit_prices') }}" class="nav-link" class="nav-link {{ request()->routeIs('manager.edit_prices') ? 'active' : '' }}">
-                            <i class="nav-icon fas fa-dollar-sign"></i>
-                            <p>Gestion des Prix</p>
-                        </a>
-                    </li> -->
+                     
 
                  
                 </ul>
@@ -201,9 +202,16 @@
                     </div>
                 @endif
 
-                <!-- Page Content -->
-                @yield('content')
+              <div class="content-body">
+                @if(isset($slot))
+                    {{ $slot }}
+                @else
+                    @yield('content')
+                @endif
             </div>
+        
+       
+    
         </main>
     </div>
 

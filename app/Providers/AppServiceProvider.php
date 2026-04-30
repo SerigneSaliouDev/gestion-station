@@ -6,6 +6,8 @@ use Illuminate\Support\ServiceProvider;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Facades\Blade;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -39,6 +41,10 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot()
     {
-        //
+        Paginator::useBootstrapFive();
+
+        Blade::component('layouts.app', 'app-layout');
+        Blade::component('layouts.chief', 'operations-layout'); // Pour tes chargés d'opérations
+        Blade::component('layouts.admin', 'admin-layout');
     }
 }

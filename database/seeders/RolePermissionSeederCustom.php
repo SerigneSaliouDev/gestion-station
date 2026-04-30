@@ -39,6 +39,15 @@ class RolePermissionSeederCustom extends Seeder
             ]
         );
         $admin->assignRole('administrateur');
+                $admin = User::firstOrCreate(
+            ['email' => 'serignesalioumboup956@gmail.com'],
+            [
+                'name' => 'Admin System',
+                'password' => Hash::make('Saliou2003'),
+                'email_verified_at' => now(),
+            ]
+        );
+        $admin->assignRole('administrateur');
 
         // 4. Création de l'utilisateur Chargé des Opérations
         $operations = User::firstOrCreate(

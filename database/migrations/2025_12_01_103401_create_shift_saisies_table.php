@@ -11,13 +11,12 @@ return new class extends Migration
      *
      * @return void
      */
-// database/migrations/2025_12_01_103401_create_shift_saisies_table.php
-// database/migrations/2025_12_01_103401_create_shift_saisies_table.php
+
 public function up()
 {
     Schema::create('shift_saisies', function (Blueprint $table) {
         $table->id();
-        $table->date('date_shift')->nullable(); // ou ->default(now())
+        $table->date('date_shift')->nullable(); 
         $table->string('shift')->nullable();
         $table->string('responsable');
         $table->decimal('total_litres', 10, 2);

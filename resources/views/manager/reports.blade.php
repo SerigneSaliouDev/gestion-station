@@ -633,7 +633,7 @@
                             <tr>
                                 <th>Date</th>
                                 <th>Shift</th>
-                                <th>Responsable</th>
+                                <th>Pompiste</th>
                                 <th class="text-right">Litres</th>
                                 <th class="text-right">Ventes</th>
                                 <th class="text-right">Versement</th>

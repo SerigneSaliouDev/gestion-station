@@ -1,0 +1,101 @@
+/* public/css/oyesse.css - VERSION CORRIGÉE */
+:root {
+    /* Couleurs ODYSSEE/OEYSSEE */
+    --odyssee-primary: #FF7F00;
+    --odyssee-dark: #333333;
+    --odyssee-light: #FFF5E6;
+    --odyssee-secondary: #0056A9;
+}
+
+/* OVERRIDE ADMINLTE */
+.main-header .navbar {
+    background-color: var(--odyssee-dark) !important;
+    border-bottom: 3px solid var(--odyssee-primary) !important;
+}
+
+.main-sidebar, .brand-link {
+    background-color: var(--odyssee-dark) !important;
+}
+
+.brand-link {
+    border-bottom: 1px solid #4b545c !important;
+}
+
+.brand-text {
+    color: var(--odyssee-primary) !important;
+    font-weight: 600 !important;
+}
+
+.nav-sidebar .nav-item > .nav-link.active {
+    background-color: var(--odyssee-primary) !important;
+    border-left: 4px solid white !important;
+}
+
+.nav-sidebar .nav-item > .nav-link:hover {
+    background-color: rgba(255, 127, 0, 0.1) !important;
+    color: var(--odyssee-primary) !important;
+}
+
+/* Boutons ODYSSEE */
+.btn-odyssee {
+    background-color: var(--odyssee-primary);
+    border-color: var(--odyssee-primary);
+    color: white;
+}
+
+.btn-odyssee:hover {
+    background-color: #e67300;
+    border-color: #e67300;
+    color: white;
+}
+
+.btn-outline-odyssee {
+    color: var(--odyssee-primary);
+    border-color: var(--odyssee-primary);
+}
+
+.btn-outline-odyssee:hover {
+    background-color: var(--odyssee-primary);
+    color: white;
+}
+
+/* Cartes ODYSSEE */
+.card-odyssee {
+    border-top: 3px solid var(--odyssee-primary) !important;
+}
+
+.card-header-odyssee {
+    background: linear-gradient(135deg, var(--odyssee-dark), #222) !important;
+    color: white !important;
+    border-bottom: 2px solid var(--odyssee-primary) !important;
+}
+
+/* Badges */
+.badge-odyssee {
+    background-color: var(--odyssee-primary) !important;
+    color: white !important;
+}
+
+/* Alerts */
+.alert-odyssee {
+    border-left: 4px solid var(--odyssee-primary) !important;
+}
+
+/* Formulaires */
+.form-control:focus, 
+.form-select:focus {
+    border-color: var(--odyssee-primary) !important;
+    box-shadow: 0 0 0 0.2rem rgba(255, 127, 0, 0.25) !important;
+}
+
+/* Progress bars */
+.progress-bar-odyssee {
+    background-color: var(--odyssee-primary) !important;
+}
+
+/* Footer */
+.main-footer {
+    background-color: var(--odyssee-dark) !important;
+    color: #ccc !important;
+    border-top: 2px solid var(--odyssee-primary) !important;
+}

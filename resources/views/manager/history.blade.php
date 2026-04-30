@@ -135,11 +135,7 @@
                                     <i class="fas fa-file-pdf"></i>
                                 </a>
                                 
-                                <!-- Imprimer -->
-                                <a href="{{ route('manager.saisie.print', $saisie->id) }}" 
-                                   class="btn btn-secondary" title="Imprimer" target="_blank">
-                                    <i class="fas fa-print"></i>
-                                </a>
+                               
                                 
                                 <!-- Supprimer -->
                                 <button type="button" class="btn btn-danger" 

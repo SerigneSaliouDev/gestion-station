@@ -13,55 +13,125 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700">
 
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            background: white;
+            background: #f5f7fb;
             margin: 0;
             padding: 0;
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
-            font-family: 'Segoe UI', Arial, sans-serif;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', 'Source Sans Pro', Arial, sans-serif;
         }
 
-        .header {
-            background: linear-gradient(135deg, #FF8C00, #FFA500);
+        .login-wrapper {
+            width: 100%;
+            max-width: 1300px;
+            background: white;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            display: flex;
+            flex-wrap: wrap;
+            margin: 20px;
+        }
+
+        .login-brand {
+            flex: 1;
+            background: linear-gradient(135deg, #FF8C00 0%, #FF6B00 100%);
+            padding: 60px 50px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
             color: white;
-            padding: 40px 20px;
+            min-width: 280px;
+        }
+
+        .brand-content {
+            max-width: 400px;
+            margin: 0 auto;
+            width: 100%;
             text-align: center;
         }
 
-        .logo-container {
-            margin-bottom: 10px;
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
         }
 
         .company-logo {
-            max-width: 350px;
+            max-width: 200px;
+            width: auto;
             height: auto;
+            max-height: 120px;
+            object-fit: contain;
+            margin: 0 auto;
+            display: block;
         }
 
-        .login-container {
-            flex: 1;
+        .brand-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .brand-description {
+            font-size: 16px;
+            line-height: 1.5;
+            opacity: 0.95;
+            margin-bottom: 40px;
+        }
+
+        .brand-features {
+            list-style: none;
+            text-align: left;
+            display: inline-block;
+            margin-top: 20px;
+        }
+
+        .brand-features li {
+            margin-bottom: 15px;
             display: flex;
-            justify-content: center;
             align-items: center;
-            padding: 50px 20px;
+            gap: 12px;
+            font-size: 15px;
         }
 
-        .login-form {
-            width: 100%;
-            max-width: 450px;
+        .brand-features li i {
+            font-size: 18px;
+            width: 24px;
+        }
+
+        .login-form-container {
+            flex: 1;
+            padding: 60px 50px;
             background: white;
-            padding: 50px;
-            border-radius: 10px;
-            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-width: 380px;
         }
 
         .form-title {
-            color: #333;
+            color: #1a1a2e;
+            margin-bottom: 10px;
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .form-subtitle {
+            color: #666;
             margin-bottom: 35px;
-            font-size: 28px;
-            font-weight: 600;
-            text-align: center;
+            font-size: 15px;
+            border-left: 3px solid #FF8C00;
+            padding-left: 15px;
         }
 
         .form-group {
@@ -70,30 +140,33 @@
 
         .form-group label {
             display: block;
-            margin-bottom: 10px;
-            color: #555;
-            font-weight: 500;
-            font-size: 15px;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
         }
 
         .input-group {
             position: relative;
+            display: flex;
+            align-items: center;
         }
 
         .form-control {
             width: 100%;
-            padding: 15px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border 0.3s;
-            height: auto;
+            padding: 14px 45px 14px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 15px;
+            transition: all 0.3s;
+            background: #fafbfc;
         }
 
         .form-control:focus {
             border-color: #FF8C00;
             outline: none;
-            box-shadow: 0 0 0 0.2rem rgba(255, 140, 0, 0.25);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
         }
 
         .input-group-append {
@@ -103,98 +176,151 @@
             height: 100%;
             display: flex;
             align-items: center;
-            padding-right: 15px;
+            padding-right: 16px;
         }
 
         .input-group-text {
             background: transparent;
             border: none;
-            color: #777;
+            color: #94a3b8;
         }
 
         .checkbox-group {
             display: flex;
             align-items: center;
-            margin-bottom: 25px;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
         }
 
-        .checkbox-group input {
-            margin-right: 12px;
-            transform: scale(1.2);
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .checkbox-group label {
+        .checkbox-wrapper input {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #FF8C00;
+        }
+
+        .checkbox-wrapper label {
             margin: 0;
             color: #555;
-            font-size: 15px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .forgot-link {
+            color: #FF8C00;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .forgot-link:hover {
+            text-decoration: underline;
         }
 
         .btn-primary {
             width: 100%;
-            padding: 15px;
+            padding: 14px;
             background: #FF8C00;
             color: white;
             border: none;
-            border-radius: 8px;
-            font-size: 18px;
-            font-weight: 600;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: all 0.3s;
             margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
 
         .btn-primary:hover {
             background: #E67E00;
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px -5px rgba(255, 140, 0, 0.3);
         }
 
-        .links {
+        .register-link {
             text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid #edf2f7;
         }
 
-        .links a {
+        .register-link p {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .register-link a {
             color: #FF8C00;
             text-decoration: none;
-            font-weight: 500;
-            display: block;
-            margin-bottom: 12px;
-            font-size: 15px;
+            font-weight: 600;
         }
 
-        .links a:hover {
+        .register-link a:hover {
             text-decoration: underline;
         }
 
-        .separator {
-            border-top: 2px solid #eee;
-            margin: 30px 0;
-        }
-
-        .windows-activation {
-            text-align: center;
-            color: #888;
-            font-size: 13px;
-            margin-top: 40px;
-            padding-top: 25px;
-            border-top: 2px solid #f0f0f0;
-        }
-
         .alert {
-            border-radius: 8px;
+            border-radius: 12px;
             margin-bottom: 25px;
             border: none;
+            padding: 12px 16px;
+            font-size: 14px;
         }
 
-        @media (max-width: 768px) {
-            .company-logo {
-                max-width: 280px;
+        .alert-danger {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .copyright {
+            text-align: center;
+            margin-top: 35px;
+            font-size: 12px;
+            color: #94a3b8;
+            padding-top: 20px;
+            border-top: 1px solid #edf2f7;
+        }
+
+        .copyright a {
+            color: #FF8C00;
+            text-decoration: none;
+        }
+
+        @media (max-width: 900px) {
+            .login-wrapper {
+                flex-direction: column;
+                margin: 15px;
+                border-radius: 20px;
             }
-            
-            .login-form {
-                padding: 35px 25px;
+            .login-brand {
+                padding: 40px 30px;
             }
-            
-            .header {
+            .login-form-container {
+                padding: 40px 30px;
+                min-width: auto;
+            }
+            .brand-features {
+                display: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .login-form-container {
                 padding: 30px 20px;
+            }
+            .form-title {
+                font-size: 26px;
             }
         }
     </style>
@@ -202,20 +328,30 @@
 
 <body>
 
-<!-- Header avec logo -->
-<div class="header">
-    <div class="logo-container">
-        <!-- Assurez-vous que le chemin du logo est correct -->
-        <img src="{{ asset('images/logo-odyssee.png') }}" alt="ODYSSEE ENERGIE" class="company-logo" onerror="this.style.display='none'">
+<div class="login-wrapper">
+    <!-- Colonne gauche avec logo -->
+    <div class="login-brand">
+        <div class="brand-content">
+            <div class="logo-section">
+                <!-- Logo avec le bon chemin : adminlte/assets/img/odysse.jpg -->
+                <img src="{{ asset('adminlte/assets/img/odysse.jpg') }}" 
+                     alt="ODYSSEE ENERGIE" 
+                     class="company-logo"
+                     onerror="this.onerror=null; this.style.display='none'; this.parentElement.innerHTML += '<div style=\'background:rgba(255,255,255,0.2);border-radius:60px;padding:15px 30px;display:inline-block;\'><i class=\'fas fa-bolt\' style=\'font-size:48px;color:white;\'></i><div style=\'font-size:28px;font-weight:800;letter-spacing:3px;\'>ODYSSEE</div><div style=\'font-size:12px;letter-spacing:2px;\'>ÉNERGIE</div></div>';">
+            </div>
+            
+            <h2 class="brand-title">ODYSSEE ÉNERGIE</h2>
+            <p class="brand-description">L'énergie qui vous accompagne vers l'avenir</p>
+            
+           
+        </div>
     </div>
-</div>
 
-<!-- Contenu principal -->
-<div class="login-container">
-    <div class="login-form">
-        <h1 class="form-title">Connectez-vous pour accéder à votre espace</h1>
+    <!-- Colonne droite : Formulaire -->
+    <div class="login-form-container">
+        <h1 class="form-title">Connexion</h1>
+        <div class="form-subtitle">Accédez à votre espace client</div>
 
-        <!-- Affichage des erreurs -->
         @if ($errors->any())
             <div class="alert alert-danger">
                 <ul style="margin-bottom:0;">
@@ -226,16 +362,16 @@
             </div>
         @endif
 
-        <!-- Formulaire de connexion -->
         <form action="{{ route('login') }}" method="POST">
             @csrf
 
             <div class="form-group">
                 <label for="email">Adresse Email</label>
                 <div class="input-group">
-                    <input type="email" name="email" class="form-control" placeholder="manager@centrepine.com" required autofocus value="{{ old('email') }}">
+                    <input type="email" name="email" id="email" class="form-control" 
+                           placeholder="gerantB@odyssee.sn" required autofocus value="{{ old('email') }}">
                     <div class="input-group-append">
-                        <div class="input-group-text"><span class="fas fa-envelope"></span></div>
+                        <div class="input-group-text"><i class="fas fa-envelope"></i></div>
                     </div>
                 </div>
             </div>
@@ -243,35 +379,46 @@
             <div class="form-group">
                 <label for="password">Mot de passe</label>
                 <div class="input-group">
-                    <input type="password" name="password" class="form-control" placeholder="············" required>
+                    <input type="password" name="password" id="password" class="form-control" 
+                           placeholder="············" required>
                     <div class="input-group-append">
-                        <div class="input-group-text"><span class="fas fa-lock"></span></div>
+                        <div class="input-group-text"><i class="fas fa-lock"></i></div>
                     </div>
                 </div>
             </div>
 
             <div class="checkbox-group">
-                <input type="checkbox" name="remember" id="remember">
-                <label for="remember">Se souvenir de moi</label>
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" name="remember" id="remember">
+                    <label for="remember">Se souvenir de moi</label>
+                </div>
+                @if (Route::has('password.request'))
+                    <a href="{{ route('password.request') }}" class="forgot-link">Mot de passe oublié ?</a>
+                @endif
             </div>
 
-            <button type="submit" class="btn-primary">Connexion</button>
+            <button type="submit" class="btn-primary">
+                <i class="fas fa-arrow-right-to-bracket"></i> Se connecter
+            </button>
         </form>
 
-        <div class="separator"></div>
-
-        <div class="links">
-            @if (Route::has('password.request'))
-                <a href="{{ route('password.request') }}">Mot de passe oublié ?</a>
-            @endif
-            
-            @if (Route::has('register'))
-                <a href="{{ route('register') }}">Créer un compte</a>
-            @endif
+        <div class="register-link">
+            <p>Vous n'avez pas de compte ? 
+                @if (Route::has('register'))
+                    <a href="{{ route('register') }}">Créer un compte</a>
+                @else
+                    <a href="#">Contacter le support</a>
+                @endif
+            </p>
         </div>
 
-     
-<!-- Scripts AdminLTE -->
+        <div class="copyright">
+            © 2025 ODYSSEE ÉNERGIE. Tous droits réservés.<br>
+            <a href="#">Conditions d'utilisation</a> | <a href="#">Politique de confidentialité</a>
+        </div>
+    </div>
+</div>
+
 <script src="{{ asset('adminlte/plugins/jquery/jquery.min.js') }}"></script>
 <script src="{{ asset('adminlte/plugins/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ asset('adminlte/js/adminlte.min.js') }}"></script>

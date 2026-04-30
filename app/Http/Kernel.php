@@ -21,6 +21,7 @@ class Kernel extends HttpKernel
         \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
         \App\Http\Middleware\TrimStrings::class,
         \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
+        'stock.guard' => \App\Http\Middleware\StockOperationGuard::class,
     ];
 
     /**
@@ -68,6 +69,7 @@ class Kernel extends HttpKernel
         'role' => \App\Http\Middleware\RoleMiddleware::class,
         'redirect.by.role' => \App\Http\Middleware\RedirectByRole::class, // Ajoutez cette ligne
         'station.access' => \App\Http\Middleware\CheckStationAccess::class,
+        'stock.guard' => \App\Http\Middleware\StockOperationGuard::class,
         'checkStation' => \App\Http\Middleware\CheckStation::class,
     ];
 }

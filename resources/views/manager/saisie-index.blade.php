@@ -9,6 +9,18 @@
 @endsection
 
 @section('content')
+@if(session('success'))
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="fas fa-check-circle"></i> {{ session('success') }}
+        @if(session('stock_info'))
+            <br><br><i class="fas fa-info-circle"></i> {{ session('stock_info') }}
+        @endif
+        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+@endif
+
 <form action="{{ route('manager.store_index') }}" method="POST" id="indexForm" enctype="multipart/form-data">
     @csrf
     
@@ -220,9 +232,15 @@
     <!-- Bouton de soumission -->
     <div class="row">
         <div class="col-12">
-            <button type="submit" class="btn odyssee-btn-primary btn-lg btn-block">
+            <button type="submit" class="btn odyssee-btn-primary btn-lg btn-block" id="submitBtn">
                 <i class="fas fa-save"></i> Enregistrer la Saisie du Shift
             </button>
+            <div id="loadingSpinner" class="text-center mt-2" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Traitement en cours...</span>
+                </div>
+                <p class="mt-2">Traitement de la vente en cours, veuillez patienter...</p>
+            </div>
         </div>
     </div>
 </form>
@@ -254,14 +272,21 @@
         background-color: #f8f9fa;
         border-radius: 5px;
     }
+    
+    .btn-disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
 </style>
 @endpush
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     $(document).ready(function() {
         const pumpsData = @json($pumps);
         let depenseCount = 0;
+        let isSubmitting = false;
 
         // Fonctions utilitaires
         function formatNumber(number, decimals = 0) {
@@ -306,7 +331,11 @@
             if (file) {
                 const maxSize = 5 * 1024 * 1024; // 5MB en bytes
                 if (file.size > maxSize) {
-                    alert('Le fichier est trop volumineux. Taille max: 5 MB');
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Fichier trop volumineux',
+                        text: 'Taille max: 5 MB'
+                    });
                     this.value = '';
                     updateFileName(this);
                 }
@@ -372,11 +401,10 @@
             return total;
         }
 
-        // Calcul de l'écart avec dépenses - FORMULE CORRECTE
+        // Calcul de l'écart avec dépenses
         function calculateEcartWithDepenses(totalDepenses) {
             const totals = calculateAllPumps();
             const cashDeposit = parseFloat($('#cash_deposit_amount').val()) || 0;
-            // FORMULE: Versement - Ventes - Dépenses
             const ecartFinal = cashDeposit - totals.totalSales - totalDepenses;
             
             const $ecartDisplay = $('#ecart-avec-depenses');
@@ -397,11 +425,10 @@
             return ecartFinal;
         }
 
-        // Calcul de l'écart principal - FORMULE CORRECTE
+        // Calcul de l'écart principal
         function calculateGap() {
             const totals = calculateAllPumps();
             const cashDeposit = parseFloat($('#cash_deposit_amount').val()) || 0;
-            // FORMULE: Versement - Ventes
             const gap = cashDeposit - totals.totalSales;
             
             const $gapDisplay = $('#total_gap_display');
@@ -418,11 +445,191 @@
                 $gapExplanation.html('<span class="text-muted">✓ Équilibre parfait</span>');
             }
             
-            // Mettre à jour aussi l'écart avec dépenses
             calculateTotalDepenses();
             
             return gap;
         }
+
+        // Vérifier le stock avant soumission
+        function validateStockBeforeSubmit() {
+            return new Promise((resolve, reject) => {
+                const fuelQuantities = {};
+                let hasErrors = false;
+                
+                // Récupérer les quantités par type de carburant
+                $('input[name^="pumps["]').each(function() {
+                    const name = $(this).attr('name');
+                    const matches = name.match(/pumps\[(\d+)\]\[(\w+)\]/);
+                    
+                    if (matches && matches[2] === 'closing_index') {
+                        const index = matches[1];
+                        const opening = parseFloat($(`input[name="pumps[${index}][opening_index]"]`).val()) || 0;
+                        const closing = parseFloat($(this).val()) || 0;
+                        const returnVal = parseFloat($(`input[name="pumps[${index}][total_return]"]`).val()) || 0;
+                        const fuelType = $(`input[name="pumps[${index}][fuel_type]"]`).val().toLowerCase();
+                        
+                        let quantity = 0;
+                        if (closing >= opening) {
+                            quantity = (closing - opening) - returnVal;
+                            quantity = Math.max(quantity, 0);
+                        }
+                        
+                        if (quantity > 0) {
+                            if (!fuelQuantities[fuelType]) {
+                                fuelQuantities[fuelType] = 0;
+                            }
+                            fuelQuantities[fuelType] += quantity;
+                        }
+                    }
+                });
+                
+                // Préparer les promesses pour vérifier chaque type
+                const promises = [];
+                for (const [fuelType, quantity] of Object.entries(fuelQuantities)) {
+                    if (quantity > 0) {
+                        promises.push(
+                            $.ajax({
+                                url: '{{ route("manager.check-stock-for-type") }}',
+                                type: 'POST',
+                                data: {
+                                    _token: '{{ csrf_token() }}',
+                                    fuel_type: fuelType,
+                                    quantity: quantity
+                                }
+                            })
+                        );
+                    }
+                }
+                
+                if (promises.length === 0) {
+                    resolve([]); // Aucune vérification nécessaire
+                    return;
+                }
+                
+                Promise.all(promises).then(responses => {
+                    const errors = [];
+                    responses.forEach(response => {
+                        if (!response.success) {
+                            errors.push(response.message);
+                            hasErrors = true;
+                        }
+                    });
+                    resolve(errors);
+                }).catch(error => {
+                    console.error('Erreur de vérification:', error);
+                    resolve([]); // En cas d'erreur, on continue
+                });
+            });
+        }
+
+        // Fonction pour bloquer le bouton
+        function lockForm() {
+            isSubmitting = true;
+            $('#submitBtn').prop('disabled', true).addClass('btn-disabled');
+            $('#submitBtn').html('<i class="fas fa-spinner fa-spin"></i> Traitement en cours...');
+            $('#loadingSpinner').show();
+        }
+
+        // Fonction pour débloquer le bouton
+        function unlockForm() {
+            isSubmitting = false;
+            $('#submitBtn').prop('disabled', false).removeClass('btn-disabled');
+            $('#submitBtn').html('<i class="fas fa-save"></i> Enregistrer la Saisie du Shift');
+            $('#loadingSpinner').hide();
+        }
+
+        // Gestion de la soumission du formulaire
+        $('#indexForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            if (isSubmitting) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Traitement en cours',
+                    text: 'Veuillez patienter, la vente est en cours de traitement.'
+                });
+                return;
+            }
+            
+            // Valider le formulaire
+            if (!this.checkValidity()) {
+                this.reportValidity();
+                return;
+            }
+            
+            // Bloquer le formulaire
+            lockForm();
+            
+            // Vérifier le stock
+            validateStockBeforeSubmit().then(stockErrors => {
+                if (stockErrors.length > 0) {
+                    // Afficher les erreurs
+                    let errorHtml = '<strong>Stock insuffisant!</strong><br><ul>';
+                    stockErrors.forEach(error => {
+                        errorHtml += `<li>${error}</li>`;
+                    });
+                    errorHtml += '</ul><br>Veuillez ajuster les quantités ou vérifier les réceptions de stock.';
+                    
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Vérification du stock',
+                        html: errorHtml,
+                        confirmButtonText: 'Compris'
+                    });
+                    
+                    unlockForm();
+                } else {
+                    // Stock OK, soumettre le formulaire
+                    $.ajax({
+                        url: $(this).attr('action'),
+                        type: 'POST',
+                        data: new FormData(this),
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            // Redirection vers le dashboard historique
+                            window.location.href = '{{ route("manager.history") }}';
+                        },
+                        error: function(xhr) {
+                            unlockForm();
+                            
+                            let errorMessage = 'Une erreur est survenue lors de l\'enregistrement.';
+                            
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                errorMessage = xhr.responseJSON.message;
+                            } else if (xhr.responseText) {
+                                // Essayer d'extraire le message d'erreur
+                                try {
+                                    const response = JSON.parse(xhr.responseText);
+                                    if (response.message) {
+                                        errorMessage = response.message;
+                                    }
+                                } catch (e) {
+                                    errorMessage = xhr.responseText.substring(0, 200);
+                                }
+                            }
+                            
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Erreur',
+                                text: errorMessage,
+                                confirmButtonText: 'OK'
+                            });
+                        }
+                    });
+                }
+            }).catch(error => {
+                console.error('Erreur de validation:', error);
+                unlockForm();
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Erreur',
+                    text: 'Une erreur est survenue lors de la vérification du stock.',
+                    confirmButtonText: 'OK'
+                });
+            });
+        });
 
         // Événements
         $(document).on('click', '.remove-depense', function() {
@@ -437,7 +644,7 @@
         $('.pump-input').on('input', calculateGap);
         $('#cash_deposit_amount').on('input', calculateGap);
 
-        // ========== CORRECTION : INITIALISATION AUTOMATIQUE ==========
+        // ========== INITIALISATION AUTOMATIQUE ==========
         
         // 1. Exécuter les calculs immédiatement au chargement
         calculateGap();
@@ -449,7 +656,6 @@
         
         // 3. Vérifier si des données existent déjà (old())
         @if(old('pumps'))
-            // Si des données existent, les calculer
             setTimeout(function() {
                 pumpsData.forEach((pump, index) => {
                     const opening = parseFloat($(`input[name="pumps[${index}][opening_index]"]`).val()) || 0;
@@ -464,11 +670,8 @@
             }, 200);
         @endif
 
-        // Validation du formulaire
-        $('#indexForm').on('submit', function(e) {
-            const gap = calculateGap();
-            console.log('Soumission avec écart:', gap);
-        });
+        // Empêcher la fermeture de la page pendant le traitement
+       
     });
 </script>
 @endpush

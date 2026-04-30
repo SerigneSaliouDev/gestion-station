@@ -50,14 +50,14 @@ class ShiftSaisie extends Model
         return $this->hasMany(Depense::class, 'shift_saisie_id');
     }
 
-    public function user()
-    {
-        return $this->belongsTo(User::class);
-    }
-
     public function station()
     {
         return $this->belongsTo(Station::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function validateur()
@@ -75,12 +75,11 @@ class ShiftSaisie extends Model
 
     public function getEcartFinalCalculatedAttribute()
     {
-        // Écart final = Versement - (Ventes - Dépenses)
-        // Il est souvent calculé comme Ecart Initial + Dépenses.
+        
         return $this->versement - ($this->total_ventes - $this->total_depenses);
     }
 
-    // --- ACCESSEURS DE FORMATAGE (POUR LA VUE) ---
+    
     
     /**
      * Accesseur pour l'écart initial formaté (utilisé par $shift->ecart_formatted).
@@ -124,7 +123,7 @@ class ShiftSaisie extends Model
      */
     public function getEcartFinalFormattedAttribute()
     {
-        // 🎯 CORRECTION: Utilise l'accéder de calcul brut pour l'écart final
+        
         $ecart = $this->ecart_final_calculated; 
         
         if (is_null($ecart)) {
@@ -182,7 +181,7 @@ class ShiftSaisie extends Model
         }
     }
     
-    // --- MÉTHODES DE VÉRIFICATION ---
+    
     
     public function estEnAttente()
     {

@@ -2,32 +2,32 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 
 class Sale extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'sale_date',
+        'station_id',
         'fuel_type',
         'quantity',
         'unit_price',
         'total_amount',
-        'pump_number',
-        'payment_method',
-        'customer_type',
+        'sale_date',
         'customer_name',
-        'vehicle_number',
+        'customer_type',
+        'payment_method',
+        'pump_number',
         'shift_id',
-        'station_id',
+        'tank_id',           // NOUVEAU
+        'tank_number',       // NOUVEAU
+        'pump_id',
         'recorded_by',
+        'verified_by',
+        'verified_at',
         'cancelled_at',
-        'cancelled_by',
-        'cancellation_reason',
-        'stock_before',
-        'stock_after',
         'notes'
     ];
 
@@ -36,102 +36,185 @@ class Sale extends Model
         'quantity' => 'decimal:2',
         'unit_price' => 'decimal:2',
         'total_amount' => 'decimal:2',
-        'cancelled_at' => 'datetime',
-        'stock_before' => 'decimal:2',
-        'stock_after' => 'decimal:2'
+        'verified_at' => 'datetime',
+        'cancelled_at' => 'datetime'
     ];
 
-    public function shift()
+    /**
+     * Types de carburant disponibles
+     */
+    public static function getFuelTypes()
     {
-        return $this->belongsTo(ShiftSaisie::class, 'shift_id');
+        return [
+            'super' => 'Super',
+            'gazole' => 'Gazole',
+            'essence pirogue' => 'Essence Pirogue'
+        ];
     }
 
-    public function recorder()
+    /**
+     * Relation avec la cuve
+     */
+    public function tank()
     {
-        return $this->belongsTo(User::class, 'recorded_by');
+        return $this->belongsTo(Tank::class, 'tank_id');
     }
 
-    public function canceller()
-    {
-        return $this->belongsTo(User::class, 'cancelled_by');
-    }
-
+    /**
+     * Relation avec la station
+     */
     public function station()
     {
         return $this->belongsTo(Station::class);
     }
 
     /**
-     * Enregistrer une vente et mettre à jour le stock
+     * Relation avec l'utilisateur qui a enregistré
      */
-    public static function recordSale($data)
+    public function recorder()
     {
-        \DB::beginTransaction();
-        
-        try {
-            // 1. Récupérer le stock actuel
-            $stockBefore = StockMovement::currentStock($data['fuel_type']);
-            
-            // 2. Vérifier si le stock est suffisant
-            if ($stockBefore < $data['quantity']) {
-                throw new \Exception("Stock insuffisant. Stock disponible: {$stockBefore} L, Quantité demandée: {$data['quantity']} L");
+        return $this->belongsTo(User::class, 'recorded_by');
+    }
+
+    /**
+     * Relation avec l'utilisateur qui a vérifié
+     */
+    public function verifier()
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    /**
+     * Événements du modèle
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Après création d'une vente, mettre à jour le stock de la cuve
+        static::created(function ($sale) {
+            if ($sale->tank_id) {
+                $sale->updateTankStock();
             }
-            
-            // 3. Calculer le stock après
-            $stockAfter = $stockBefore - $data['quantity'];
-            
-            // 4. Enregistrer le mouvement de stock
-            $movement = StockMovement::create([
-                'movement_date' => $data['sale_date'],
-                'fuel_type' => $data['fuel_type'],
-                'movement_type' => 'vente',
-                'quantity' => -$data['quantity'], // Négatif pour une vente
-                'unit_price' => $data['unit_price'],
-                'total_amount' => $data['total_amount'],
-                'stock_before' => $stockBefore,
-                'stock_after' => $stockAfter,
-                'pump_number' => $data['pump_number'] ?? null,
-                'payment_method' => $data['payment_method'] ?? null,
-                'customer_type' => $data['customer_type'] ?? null,
-                'customer_name' => $data['customer_name'] ?? null,
-                'recorded_by' => $data['recorded_by'],
-                'shift_id' => $data['shift_id'] ?? null,
-                'station_id' => $data['station_id'] ?? null,
-                'notes' => $data['notes'] ?? null
-            ]);
-            
-            // 5. Enregistrer la vente
-            $sale = self::create([
-                'sale_date' => $data['sale_date'],
-                'fuel_type' => $data['fuel_type'],
-                'quantity' => $data['quantity'],
-                'unit_price' => $data['unit_price'],
-                'total_amount' => $data['total_amount'],
-                'pump_number' => $data['pump_number'] ?? null,
-                'payment_method' => $data['payment_method'] ?? null,
-                'customer_type' => $data['customer_type'] ?? null,
-                'customer_name' => $data['customer_name'] ?? null,
-                'vehicle_number' => $data['vehicle_number'] ?? null,
-                'shift_id' => $data['shift_id'] ?? null,
-                'station_id' => $data['station_id'] ?? null,
-                'recorded_by' => $data['recorded_by'],
-                'stock_before' => $stockBefore,
-                'stock_after' => $stockAfter,
-                'notes' => $data['notes'] ?? null
-            ]);
-            
-            \DB::commit();
-            
-            return [
-                'sale' => $sale,
-                'movement' => $movement,
-                'stock_before' => $stockBefore,
-                'stock_after' => $stockAfter
-            ];
-            
-        } catch (\Exception $e) {
-            \DB::rollBack();
-            throw $e;
+        });
+
+        // Après annulation d'une vente, restaurer le stock
+        static::updated(function ($sale) {
+            if ($sale->wasChanged('cancelled_at') && $sale->cancelled_at) {
+                $sale->restoreTankStock();
+            }
+        });
+    }
+
+    /**
+     * Mettre à jour le stock de la cuve après une vente
+     */
+    public function updateTankStock()
+    {
+        if (!$this->tank_id || $this->cancelled_at) {
+            return;
         }
+
+        $tank = Tank::find($this->tank_id);
+        
+        if ($tank) {
+            // Calculer le nouveau volume
+            $newVolume = max(0, $tank->current_volume - $this->quantity);
+            
+            // Mettre à jour la cuve
+            $tank->update([
+                'current_volume' => $newVolume,
+                'current_level_cm' => $tank->capacity > 0 
+                    ? ($newVolume / $tank->capacity) * 250 
+                    : 0,
+                'last_measurement_date' => now()
+            ]);
+            
+            // Journaliser
+            \Log::info('Stock de cuve mis à jour après vente', [
+                'sale_id' => $this->id,
+                'tank_id' => $tank->id,
+                'tank_number' => $tank->number,
+                'fuel_type' => $tank->fuel_type,
+                'quantity_sold' => $this->quantity,
+                'volume_before' => $tank->current_volume + $this->quantity,
+                'volume_after' => $newVolume,
+                'station_id' => $this->station_id
+            ]);
+        }
+    }
+
+    /**
+     * Restaurer le stock de la cuve après annulation
+     */
+    public function restoreTankStock()
+    {
+        if (!$this->tank_id) {
+            return;
+        }
+
+        $tank = Tank::find($this->tank_id);
+        
+        if ($tank) {
+            // Restaurer le volume
+            $newVolume = $tank->current_volume + $this->quantity;
+            
+            $tank->update([
+                'current_volume' => $newVolume,
+                'current_level_cm' => $tank->capacity > 0 
+                    ? ($newVolume / $tank->capacity) * 250 
+                    : 0,
+                'last_measurement_date' => now()
+            ]);
+            
+            \Log::info('Stock de cuve restauré après annulation de vente', [
+                'sale_id' => $this->id,
+                'tank_id' => $tank->id,
+                'quantity_restored' => $this->quantity,
+                'new_volume' => $newVolume
+            ]);
+        }
+    }
+
+    /**
+     * Vérifier si la vente peut être effectuée (stock suffisant)
+     */
+    public static function canSell($tankId, $quantity)
+    {
+        $tank = Tank::find($tankId);
+        
+        if (!$tank) {
+            return false;
+        }
+
+        return $tank->current_volume >= $quantity;
+    }
+
+    /**
+     * Obtenir l'affichage formaté du type de carburant
+     */
+    public function getFuelTypeDisplayAttribute()
+    {
+        $types = [
+            'super' => 'SUPER',
+            'gazole' => 'GAZOLE',
+            'essence pirogue' => 'ESSENCE PIROGUE'
+        ];
+        
+        return $types[strtolower($this->fuel_type)] ?? strtoupper($this->fuel_type);
+    }
+
+    /**
+     * Obtenir la couleur du badge selon le type de carburant
+     */
+    public function getFuelTypeBadgeClassAttribute()
+    {
+        $classes = [
+            'super' => 'badge-danger',
+            'gazole' => 'badge-success',
+            'essence pirogue' => 'badge-warning'
+        ];
+        
+        return $classes[strtolower($this->fuel_type)] ?? 'badge-secondary';
     }
 }
