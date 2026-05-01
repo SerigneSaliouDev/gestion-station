@@ -9,33 +9,37 @@ return new class extends Migration
 {
     public function up()
     {
-        // ÉTAPE 1: Rendre la colonne nullable temporairement
-        Schema::table('shift_saisies', function (Blueprint $table) {
-            $table->date('date_shift')->nullable()->change();
-        });
+        // ⚠️ 1. D'abord, nettoyer les données AVANT de toucher à la structure
+        // Convertir les chaînes vides en NULL (en utilisant UPDATE direct)
+        DB::statement("UPDATE shift_saisies SET date_shift = NULL WHERE date_shift = ''");
         
-        // ÉTAPE 2: Nettoyer les données invalides
+        // 2. Nettoyer les dates invalides
         DB::statement("
             UPDATE shift_saisies 
             SET date_shift = NULL 
-            WHERE date_shift = '' 
-               OR date_shift IS NULL 
-               OR date_shift NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+            WHERE date_shift IS NOT NULL 
+              AND date_shift NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+              AND date_shift NOT REGEXP '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'
         ");
         
-        // ÉTAPE 3: Convertir les dates au format français si nécessaire
+        // 3. Convertir les dates au format français (dd/mm/YYYY) en format SQL (YYYY-mm-dd)
         DB::statement("
             UPDATE shift_saisies 
             SET date_shift = STR_TO_DATE(date_shift, '%d/%m/%Y')
             WHERE date_shift REGEXP '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'
         ");
         
-        // ÉTAPE 4: Remplir les dates NULL avec une date par défaut
+        // 4. Remplir les dates NULL avec une valeur par défaut
         DB::table('shift_saisies')
             ->whereNull('date_shift')
-            ->update(['date_shift' => '2025-01-01']); // Date par défaut
+            ->update(['date_shift' => '2025-01-01']);
         
-        // ÉTAPE 5: Maintenant vous pouvez mettre NOT NULL
+        // 5. MAINTENANT, modifier la colonne (rendre nullable temporairement)
+        Schema::table('shift_saisies', function (Blueprint $table) {
+            $table->date('date_shift')->nullable()->change();
+        });
+        
+        // 6. Enfin, repasser en NOT NULL
         Schema::table('shift_saisies', function (Blueprint $table) {
             $table->date('date_shift')->nullable(false)->change();
         });
