@@ -84,7 +84,23 @@ class StockMovement extends Model
         ->orderBy('created_at', 'desc')
         ->first();
 
-    $stockBefore = $latestMovement ? $latestMovement->stock_after : 0;
+    if ($latestMovement) {
+        $stockBefore = $latestMovement->stock_after;
+} else {
+    // Fallback : utiliser le volume actuel de la cuve
+    $fuelAliases = [
+        'gazole'  => ['gasoil', 'gazole', ],
+        'gasoil'  => ['gasoil', 'gazole', ],
+        'super'   => ['super', 'essence'],
+        'essence pirogue' => [ 'essence pirogue'],
+    ];
+    $aliases = $fuelAliases[$movement->fuel_type] ?? [$movement->fuel_type];
+    
+    $tank = \App\Models\Tank::where('station_id', $movement->station_id)
+        ->whereIn('fuel_type', $aliases)
+        ->first();
+    $stockBefore = $tank ? $tank->current_volume : 0;
+}
     $movement->stock_before = $stockBefore;
 
     // Calculer le stock après selon le type de mouvement

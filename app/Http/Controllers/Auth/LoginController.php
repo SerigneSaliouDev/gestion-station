@@ -7,19 +7,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Log; // Ajoutez ceci
 
 class LoginController extends Controller
 {
-    /**
-     * Où rediriger les utilisateurs après connexion.
-     *
-     * @var string
-     */
     protected $redirectTo = '/';
 
-    /**
-     * Crée une nouvelle instance du contrôleur.
-     */
     public function __construct()
     {
         $this->middleware('guest')->except('logout');
@@ -36,7 +29,7 @@ class LoginController extends Controller
             'password' => 'required',
         ]);
 
-        // Tenter la connexion
+        // Tentative de connexion
         if (Auth::attempt([
             'email' => $request->email,
             'password' => $request->password
@@ -44,36 +37,61 @@ class LoginController extends Controller
             
             $request->session()->regenerate();
             
-            // Redirection selon le rôle
             $user = Auth::user();
+            
+            // ===== IMPORTANT: METTRE À JOUR LES INFOS DE CONNEXION =====
+            $user->update([
+                'last_login_at' => now(),           // Dernière connexion
+                'last_activity_at' => now(),        // Dernière activité
+                'last_login_ip' => $request->ip(),  // IP de connexion
+                'last_user_agent' => $request->userAgent(), // Navigateur
+                'email_verified_at' => $user->email_verified_at ?? now(), // Force la vérification
+                'is_active' => true,                // Active le compte
+                'statut' => 'active',               // Met à jour le statut
+            ]);
+            
+            // Log pour débogage
+            Log::info('Utilisateur connecté', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'name' => $user->name,
+                'ip' => $request->ip(),
+                'time' => now()->toDateTimeString()
+            ]);
             
             // Définir la station active selon le rôle
             $this->setActiveStationForUser($user);
             
+            // Redirection selon le rôle
             if ($user->isManager()) {
-                // Vérifier si le manager a une station assignée
                 if ($user->station_id) {
-                    // Stocker la station dans la session
                     Session::put('current_station_id', $user->station_id);
+                    Session::put('current_station_name', $user->station->nom ?? 'Station inconnue');
                     
-                    // RÉDIRIGER DIRECTEMENT VERS LA PAGE DE SAISIE DES INDEX
+                    // Redirection vers la saisie des index
                     return redirect()->route('manager.index_form');
                 } else {
-                    // Si aucun manager n'a de station, afficher une erreur
-                    return redirect()->route('manager.no-station');
+                    return redirect()->route('manager.no-station')
+                        ->with('error', 'Vous n\'êtes pas assigné à une station. Contactez l\'administrateur.');
                 }
-            } elseif ($user->isChief()) {
-                // Le chef d'opérations voit toutes les stations
+            } 
+            elseif ($user->isChief()) {
                 return redirect()->route('station.select');
-            } elseif ($user->isAdmin()) {
-                // L'administrateur va au tableau de bord admin
+            } 
+            elseif ($user->isAdmin()) {
                 return redirect()->route('admin.users.index');
             }
             
             return redirect()->intended($this->redirectTo);
         }
 
-        // Si la connexion échoue
+        // Log de l'échec de connexion
+        Log::warning('Tentative de connexion échouée', [
+            'email' => $request->email,
+            'ip' => $request->ip(),
+            'time' => now()->toDateTimeString()
+        ]);
+
         throw ValidationException::withMessages([
             'email' => __('auth.failed'),
         ]);
@@ -84,18 +102,37 @@ class LoginController extends Controller
      */
     protected function setActiveStationForUser($user)
     {
-        if ($user->isManager()) {
-            // Pour un manager, la station active est toujours sa station assignée
-            if ($user->station_id) {
-                $user->setActiveStation($user->station_id);
-                Session::put('active_station_id', $user->station_id);
-                Session::put('current_station', $user->station);
+        try {
+            if ($user->isManager()) {
+                if ($user->station_id) {
+                    // Charger la relation si pas déjà fait
+                    if (!$user->relationLoaded('station')) {
+                        $user->load('station');
+                    }
+                    
+                    $user->setActiveStation($user->station_id);
+                    Session::put('active_station_id', $user->station_id);
+                    
+                    if ($user->station) {
+                        Session::put('current_station', [
+                            'id' => $user->station->id,
+                            'name' => $user->station->nom,
+                            'code' => $user->station->code,
+                        ]);
+                    }
+                }
+            } elseif ($user->isChief() || $user->isAdmin()) {
+                // Nettoyer la session pour les chefs/admins
+                Session::forget('active_station_id');
+                Session::forget('current_station');
+                Session::forget('current_station_id');
+                Session::forget('current_station_name');
             }
-        } elseif ($user->isChief() || $user->isAdmin()) {
-            // Pour les chefs/admins, on ne définit pas de station par défaut
-            // Ils devront en sélectionner une
-            Session::forget('active_station_id');
-            Session::forget('current_station');
+        } catch (\Exception $e) {
+            Log::error('Erreur lors de la définition de la station active', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
         }
     }
 
@@ -104,12 +141,23 @@ class LoginController extends Controller
      */
     public function logout(Request $request)
     {
+        $user = Auth::user();
+        
+        if ($user) {
+            Log::info('Utilisateur déconnecté', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'ip' => $request->ip()
+            ]);
+            
+            // Optionnel: Enregistrer la dernière déconnexion
+            $user->update(['last_logout_at' => now()]);
+        }
+        
         Auth::logout();
-
         $request->session()->invalidate();
-
         $request->session()->regenerateToken();
-
+        
         return redirect('/login');
     }
 }

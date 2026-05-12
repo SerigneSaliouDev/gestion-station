@@ -442,6 +442,6 @@ Route::prefix('supervision')->name('supervision.')->group(function () {
     });
 
 // ==================== ROUTES FALLBACK ====================
-Route::fallback(function () {
-    return response()->view('errors.404', [], 404);
-});
+// Route::fallback(function () {
+//     return response()->view('errors.404', [], 404);
+// });

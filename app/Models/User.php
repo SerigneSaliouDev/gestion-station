@@ -10,24 +10,15 @@ use Illuminate\Support\Facades\Session;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, Notifiable, HasRoles;
-
+    use HasRoles, Notifiable;
+    
     protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'station_id',
-        'active_station_id',
-        'telephone',
-        'statut',
-        'is_active',
+        'name', 'email', 'password', 'role', 'statut', 
+        'station_id', 'is_active', 'email_verified_at', 'created_by'
     ];
-
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
-
+    
+    protected $hidden = ['password', 'remember_token'];
+    
     protected $casts = [
         'email_verified_at' => 'datetime',
         'is_active' => 'boolean',

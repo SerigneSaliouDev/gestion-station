@@ -286,7 +286,7 @@
                             </div>
                         </div>
                     </div>
-                    
+                   
                     <div class="col-md-3 col-sm-6 mb-3 d-flex align-items-stretch">
                         <div class="info-box bg-success w-100">
                             <span class="info-box-icon"><i class="fas fa-chart-line"></i></span>
@@ -326,7 +326,7 @@
                                     <tr>
                                         <th>Date</th>
                                         <th>Shift</th>
-                                        <th>Responsable</th>
+                                        <th>Pompiste</th>
                                         <th>Ventes</th>
                                         <th>Écart</th>
                                         <th>Statut</th>
@@ -345,7 +345,7 @@
                                         <tr>
                                             <td><?php echo e($shift->date_shift->format('d/m/Y')); ?></td>
                                             <td><?php echo e($shift->shift); ?></td>
-                                            <td><?php echo e($shift->responsable); ?></td>
+                                            <td><?php echo e($shift->pompiste); ?></td>
                                             <td class="font-weight-bold">
                                                 <?php echo e(number_format($shift->total_ventes, 0, ',', ' ')); ?> F
                                             </td>

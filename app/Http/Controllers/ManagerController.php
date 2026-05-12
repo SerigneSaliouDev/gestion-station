@@ -1,13 +1,13 @@
 <?php
-
 namespace App\Http\Controllers;
-
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Barryvdh\DomPDF\Facade\Pdf as PDF;
 use Carbon\Carbon;
+use App\Models\Sale;
+use App\Traits\FuelTypeTrait;       // ← UNE SEULE FOIS
 use App\Models\ShiftSaisie;
 use App\Models\Tank;
 use App\Models\StockMovement; 
@@ -19,7 +19,8 @@ use App\Models\User;
 
 class ManagerController extends Controller
 {
-     protected $stockService;
+    protected $stockService;
+    use FuelTypeTrait;
      
        public function __construct(StockOperationService $stockService)
         {
@@ -152,6 +153,7 @@ class ManagerController extends Controller
                     $salesByFuelType[$fuelType] = [
                         'quantity' => 0,
                         'total_amount' => 0,
+                        'unit_price' => $unitPrice,
                         'pumps' => []
                     ];
                 }
@@ -203,8 +205,6 @@ class ManagerController extends Controller
                     'montant_ventes' => $literage * $unitPrice,
                 ]);
             }
-
-            
             
             $stockUpdates = [];
             
@@ -215,12 +215,12 @@ class ManagerController extends Controller
                         $tank = Tank::where('station_id', $user->station_id)
                             ->where(function($query) use ($fuelType) {
                                 $query->where('fuel_type', 'LIKE', $fuelType)
-                                      ->orWhere('fuel_type', 'LIKE', '%' . $fuelType . '%');
-                                      
+                                    ->orWhere('fuel_type', 'LIKE', '%' . $fuelType . '%');
+                                    
                                 if (in_array($fuelType, ['gasoil', 'gazole', 'diesel'])) {
                                     $query->orWhere('fuel_type', 'LIKE', '%gasoil%')
-                                          ->orWhere('fuel_type', 'LIKE', '%gazole%')
-                                          ->orWhere('fuel_type', 'LIKE', '%diesel%');
+                                        ->orWhere('fuel_type', 'LIKE', '%gazole%')
+                                        ->orWhere('fuel_type', 'LIKE', '%diesel%');
                                 }
                             })
                             ->orderBy('current_volume', 'desc')
@@ -247,24 +247,54 @@ class ManagerController extends Controller
                         $ancienStock = $tank->current_volume;
                         $nouveauStock = $ancienStock - $saleData['quantity'];
                         
-                        // 3. CRÉER UN SEUL STOCK MOVEMENT via le service
                         $avgPrice = $saleData['total_amount'] / $saleData['quantity'];
                         
-                        $movementResult = $this->stockService->registerSale([
+                        // ========== CRÉER LA VENTE DANS LA TABLE SALES ==========
+                        $sale = Sale::create([
                             'station_id' => $user->station_id,
+                            'tank_id' => $tank->id,
+                            'tank_number' => $tank->number,
                             'fuel_type' => $fuelType,
+                            'fuel_type_display' => $this->getFuelTypeDisplay($fuelType),
                             'quantity' => $saleData['quantity'],
                             'unit_price' => $avgPrice,
-                            'customer_name' => $request->responsible_name . ' (Shift)',
+                            'total_amount' => $saleData['total_amount'],
+                            'sale_date' => $request->shift_date,
+                            'customer_name' => $request->responsible_name . ' (Shift #' . $shift->id . ')',
+                            'customer_type' => 'shift',
                             'payment_method' => 'cash',
-                            'tank_number' => $tank->number,
-                            'recorded_by' => $user->id,
-                            'movement_date' => $request->shift_date,
+                            'shift_id' => $shift->id,
                             'shift_saisie_id' => $shift->id,
-                            'auto_generated' => true
+                            'recorded_by' => $user->id,
+                            'notes' => 'Vente automatique générée par la saisie de shift',
+                            'source' => 'shift'
                         ]);
                         
-                        // 4. Mettre à jour la cuve DIRECTEMENT (pas via un nouveau mouvement)
+                        // ========== CRÉER LE MOUVEMENT DE STOCK ==========
+                        $movement = StockMovement::create([
+                            'station_id' => $user->station_id,
+                            'tank_id' => $tank->id,
+                            'tank_number' => $tank->number,
+                            'movement_date' => $request->shift_date,
+                            'fuel_type' => $fuelType,
+                            'movement_type' => 'vente',
+                            'quantity' => -$saleData['quantity'],
+                            'unit_price' => $avgPrice,
+                            'total_amount' => $saleData['total_amount'],
+                            'customer_name' => $request->responsible_name . ' (Shift)',
+                            'customer_type' => 'shift',
+                            'payment_method' => 'cash',
+                            'stock_before' => $ancienStock,
+                            'stock_after' => $nouveauStock,
+                            'notes' => 'Mouvement généré par shift #' . $shift->id,
+                            'recorded_by' => $user->id,
+                            'reference_type' => 'shift',
+                            'reference_id' => $shift->id,
+                            'sale_id' => $sale->id,
+                            'shift_saisie_id' => $shift->id,
+                        ]);
+                        
+                        // 4. Mettre à jour la cuve
                         $tank->current_volume = $nouveauStock;
                         $tank->current_level_cm = $tank->capacity > 0 
                             ? ($nouveauStock / $tank->capacity) * 250 
@@ -272,14 +302,13 @@ class ManagerController extends Controller
                         $tank->last_measurement_date = now();
                         $tank->save();
                         
-                        \Log::info('Stock mis à jour pour shift', [
+                        \Log::info('Vente et mouvement créés pour shift', [
                             'shift_id' => $shift->id,
+                            'sale_id' => $sale->id,
+                            'movement_id' => $movement->id,
                             'fuel_type' => $fuelType,
-                            'tank_id' => $tank->id,
-                            'movement_id' => $movementResult['movement']->id,
-                            'quantite' => $saleData['quantity'],
-                            'avant' => $ancienStock,
-                            'apres' => $nouveauStock
+                            'quantity' => $saleData['quantity'],
+                            'tank_id' => $tank->id
                         ]);
                         
                         $stockUpdates[$fuelType] = [
@@ -288,7 +317,8 @@ class ManagerController extends Controller
                             'quantity' => $saleData['quantity'],
                             'before' => $ancienStock,
                             'after' => $nouveauStock,
-                            'movement_id' => $movementResult['movement']->id
+                            'sale_id' => $sale->id,
+                            'movement_id' => $movement->id
                         ];
                         
                     } catch (\Exception $e) {
@@ -302,7 +332,7 @@ class ManagerController extends Controller
                 }
             }
 
-            // Gestion des dépenses
+            // Gestion des dépenses (gardez votre code existant)
             $totalDepenses = 0;
             if ($request->has('depenses')) {
                 foreach ($request->depenses as $index => $depense) {
@@ -334,28 +364,6 @@ class ManagerController extends Controller
                 'ecart_final' => $ecartFinal
             ]);
 
-            // ========== VÉRIFICATION ANTI-DOUBLON ==========
-            $movementsCount = StockMovement::where('shift_saisie_id', $shift->id)->count();
-            $expectedCount = count(array_filter($salesByFuelType, fn($s) => $s['quantity'] > 0));
-
-            \Log::info('VÉRIFICATION STOCK MOVEMENTS', [
-                'shift_id' => $shift->id,
-                'mouvements_créés' => $movementsCount,
-                'mouvements_attendus' => $expectedCount,
-                'ok' => $movementsCount === $expectedCount
-            ]);
-
-            if ($movementsCount > $expectedCount) {
-                \Log::error('DOUBLONS DÉTECTÉS!', [
-                    'shift_id' => $shift->id,
-                    'attendu' => $expectedCount,
-                    'obtenu' => $movementsCount,
-                    'doublons' => $movementsCount - $expectedCount
-                ]);
-                
-                throw new \Exception('Doublons de mouvements de stock détectés!');
-            }
-
             DB::commit();
 
             $stockMessage = '';
@@ -368,8 +376,8 @@ class ManagerController extends Controller
             }
 
             return redirect()->route('manager.history')
-                ->with('success', 'Saisie enregistrée avec succès! En attente de validation.')
-                ->with('info', $stockMessage ? "Stock mis à jour: $stockMessage" : '');
+                ->with('success', 'Saisie enregistrée avec succès! ' . $stockMessage)
+                ->with('info', 'Ventes et mouvements de stock créés automatiquement.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -384,7 +392,6 @@ class ManagerController extends Controller
                 ->with('error', 'Erreur: ' . $e->getMessage());
         }
     }
-
 private function processShiftStockSales($shift, $salesByFuelType, $request)
 {
     $results = [];

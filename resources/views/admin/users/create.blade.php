@@ -84,7 +84,7 @@
                                         <option value="manager" {{ old('role') == 'manager' ? 'selected' : '' }}>
                                             Manager
                                         </option>
-                                        <option value="chief" {{ old('role') == 'chief' ? 'selected' : '' }}>
+                                        <option value="charge-operations" {{ old('role') == 'charge-operations' ? 'selected' : '' }}>
                                             Chef des opérations
                                         </option>
                                         <option value="user" {{ old('role') == 'user' ? 'selected' : '' }}>

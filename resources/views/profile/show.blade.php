@@ -108,17 +108,16 @@
                 </div>
             @endif
 
-                
             @if (Laravel\Jetstream\Jetstream::hasAccountDeletionFeatures())
                 <div class="col-md-6 mb-4">
                     <div class="card card-outline card-danger h-100">
-                        <div class="card-header bg-danger text-white">
-                            <h3 class="card-title text-white">
+                        <div class="card-header">
+                            <h3 class="card-title text-danger">
                                 <i class="fas fa-exclamation-triangle mr-2"></i>
                                 {{ __('Zone de Danger') }}
                             </h3>
                             <div class="card-tools">
-                                <button type="button" class="btn btn-tool text-white" data-card-widget="collapse">
+                                <button type="button" class="btn btn-tool" data-card-widget="collapse">
                                     <i class="fas fa-minus"></i>
                                 </button>
                             </div>
@@ -142,61 +141,101 @@
 
 @push('styles')
 <style>
-    /* Styles pour garantir que les boutons sont visibles */
-    .card-body button[type="submit"],
+    /* ============================================ */
+    /* STYLES CORRIGÉS POUR BOUTONS CLAIRS ET VISIBLES */
+    /* ============================================ */
+    
+    /* Styles de base pour TOUS les boutons */
+    .card-body button,
+    .card-body input[type="submit"],
+    .card-body input[type="button"],
     .profile-update-form-wrapper button,
     .password-update-form-wrapper button,
-    .sessions-form-wrapper button,
-    .delete-form-wrapper button {
-        background-color: #FF7F00 !important;
-        border-color: #FF7F00 !important;
-        color: white !important;
-        padding: 8px 20px !important;
-        border-radius: 4px !important;
-        font-weight: 600 !important;
-        margin-top: 15px !important;
+    .delete-form-wrapper button,
+    [wire\:submit] button,
+    button[wire\:click] {
         display: inline-block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        padding: 10px 24px !important;
+        border-radius: 6px !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
         cursor: pointer !important;
+        transition: all 0.3s ease !important;
+        border: none !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    }
+
+    /* BOUTON PRINCIPAL - ORANGE (Save, Update, Enregistrer) */
+    .card-body button[type="submit"],
+    .profile-update-form-wrapper button[type="submit"],
+    .password-update-form-wrapper button[type="submit"],
+    button:contains("Save"),
+    button:contains("Update"),
+    button:contains("Enregistrer"),
+    button:contains("Mettre à jour"),
+    button:contains("Modifier"),
+    [wire\:submit] button {
+        background-color: #FF7F00 !important;
+        color: white !important;
+        border: 2px solid #FF7F00 !important;
     }
 
     .card-body button[type="submit"]:hover,
-    .profile-update-form-wrapper button:hover,
-    .password-update-form-wrapper button:hover,
-    .sessions-form-wrapper button:hover,
-    .delete-form-wrapper button:hover {
+    .profile-update-form-wrapper button[type="submit"]:hover,
+    .password-update-form-wrapper button[type="submit"]:hover {
         background-color: #e67300 !important;
         border-color: #e67300 !important;
-        transform: translateY(-1px);
-        transition: all 0.3s ease;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(255, 127, 0, 0.3) !important;
     }
 
-    /* Style spécifique pour le bouton de suppression */
-    .delete-form-wrapper button {
+    /* BOUTON SUPPRESSION - ROUGE */
+    .delete-form-wrapper button,
+    button:contains("Delete"),
+    button:contains("Supprimer"),
+    button:contains("Confirmer la suppression") {
         background-color: #dc3545 !important;
-        border-color: #dc3545 !important;
+        color: white !important;
+        border: 2px solid #dc3545 !important;
     }
 
-    .delete-form-wrapper button:hover {
+    .delete-form-wrapper button:hover,
+    button:contains("Delete"):hover {
         background-color: #c82333 !important;
         border-color: #bd2130 !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3) !important;
     }
 
-    /* Style pour les boutons secondaires */
-    .card-body button[type="button"] {
+    /* BOUTON SECONDAIRE - GRIS (Annuler, Cancel) */
+    .card-body button[type="button"],
+    button:contains("Cancel"),
+    button:contains("Annuler"),
+    button:contains("Fermer") {
         background-color: #6c757d !important;
-        border-color: #6c757d !important;
         color: white !important;
+        border: 2px solid #6c757d !important;
     }
 
-    /* Amélioration des champs de formulaire */
-    .card-body input,
+    .card-body button[type="button"]:hover {
+        background-color: #5a6268 !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* CHAMPS DE FORMULAIRES - BIEN VISIBLES */
+    .card-body input:not([type="submit"]):not([type="button"]),
     .card-body textarea,
     .card-body select {
-        border-radius: 4px !important;
-        border: 1px solid #ddd !important;
-        padding: 8px 12px !important;
         width: 100% !important;
-        margin-bottom: 10px !important;
+        padding: 10px 12px !important;
+        border: 1px solid #ced4da !important;
+        border-radius: 6px !important;
+        font-size: 14px !important;
+        background-color: #fff !important;
+        margin-bottom: 15px !important;
+        transition: all 0.3s ease !important;
     }
 
     .card-body input:focus,
@@ -204,43 +243,44 @@
     .card-body select:focus {
         border-color: #FF7F00 !important;
         outline: none !important;
-        box-shadow: 0 0 0 0.2rem rgba(255, 127, 0, 0.25) !important;
+        box-shadow: 0 0 0 3px rgba(255, 127, 0, 0.25) !important;
     }
 
-    /* Style pour les labels */
+    /* LABELS - CLAIRS ET VISIBLES */
     .card-body label {
-        font-weight: 600 !important;
-        margin-bottom: 5px !important;
         display: block !important;
+        font-weight: 600 !important;
+        margin-bottom: 8px !important;
         color: #333 !important;
+        font-size: 14px !important;
     }
 
-    /* Espacement entre les champs */
-    .card-body .form-group,
-    .card-body .space-y-6 > div {
-        margin-bottom: 20px !important;
-    }
-
-    /* Style pour les messages d'erreur */
+    /* MESSAGES D'ERREUR */
     .card-body .text-danger,
     .card-body .error {
         color: #dc3545 !important;
         font-size: 12px !important;
         margin-top: 5px !important;
+        display: block !important;
     }
 
-    /* Style pour les messages de succès */
-    .card-body .text-success,
-    .card-body .success {
-        color: #28a745 !important;
-        font-size: 14px !important;
-        margin-top: 10px !important;
-        padding: 10px !important;
+    /* MESSAGES DE SUCCÈS */
+    .card-body .text-success {
         background-color: #d4edda !important;
-        border-radius: 4px !important;
+        color: #155724 !important;
+        padding: 12px !important;
+        border-radius: 6px !important;
+        margin-top: 15px !important;
+        border-left: 4px solid #28a745 !important;
     }
 
-    /* Styles existants */
+    /* ESPACEMENT DES GROUPES DE FORMULAIRES */
+    .card-body .form-group,
+    .card-body .space-y-6 > div {
+        margin-bottom: 20px !important;
+    }
+
+    /* STYLES EXISTANTS CONSERVÉS */
     .card-orange:not(.card-outline) > .card-header {
         background-color: #FF7F00;
         color: white;
@@ -298,76 +338,128 @@
         padding: 1.5rem;
     }
 
-    /* Assurer que les wrappers Livewire prennent tout l'espace */
-    .profile-update-form-wrapper,
-    .password-update-form-wrapper,
-    .sessions-form-wrapper,
-    .delete-form-wrapper {
-        width: 100%;
+    /* ESPACE ENTRE LES BOUTONS DANS UN GROUPE */
+    .card-body .flex,
+    .card-body .flex-row {
+        gap: 12px !important;
     }
 
-    /* Style pour les boutons dans les composants Livewire natifs */
-    [wire\:submit] button,
-    button[wire\:click] {
-        background-color: #FF7F00 !important;
-        border-color: #FF7F00 !important;
-        color: white !important;
-        padding: 8px 20px !important;
-        border-radius: 4px !important;
-        font-weight: 600 !important;
-        cursor: pointer !important;
-    }
-
-    /* Style spécifique pour les boutons "Save" et "Update" */
-    button:contains("Save"),
-    button:contains("Update"),
-    button:contains("Enregistrer"),
-    button:contains("Mettre à jour") {
-        background-color: #FF7F00 !important;
+    /* BOUTON DÉSACTIVÉ */
+    .card-body button:disabled,
+    .card-body input:disabled {
+        opacity: 0.6 !important;
+        cursor: not-allowed !important;
     }
 </style>
 @endpush
 
 @push('scripts')
 <script>
-    // Script pour s'assurer que tous les boutons sont visibles après le chargement de la page
+    // Script pour s'assurer que tous les boutons sont correctement stylisés
     document.addEventListener('DOMContentLoaded', function() {
-        // Vérifier et styliser tous les boutons dans les formulaires
-        const allButtons = document.querySelectorAll('.card-body button, [wire\\:submit] button, button[wire\\:click]');
+        styliserTousLesBoutons();
         
-        allButtons.forEach(button => {
-            // S'assurer que le bouton est visible
-            button.style.display = 'inline-block';
-            button.style.visibility = 'visible';
-            button.style.opacity = '1';
-            
-            // Ajouter une classe si nécessaire
-            if (!button.classList.contains('btn') && !button.classList.contains('btn-primary')) {
-                button.classList.add('btn', 'btn-primary');
-            }
-        });
-        
-        // Observer les changements dans le DOM (pour les composants Livewire)
+        // Observer les changements Livewire
         const observer = new MutationObserver(function(mutations) {
+            let besoinStyle = false;
             mutations.forEach(function(mutation) {
-                if (mutation.type === 'childList') {
-                    const newButtons = document.querySelectorAll('.card-body button:not([style*="display"])');
-                    newButtons.forEach(button => {
-                        button.style.display = 'inline-block';
-                        button.style.visibility = 'visible';
-                        button.style.opacity = '1';
-                        if (!button.classList.contains('btn')) {
-                            button.classList.add('btn', 'btn-primary');
-                        }
-                    });
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    besoinStyle = true;
                 }
             });
+            if (besoinStyle) {
+                setTimeout(styliserTousLesBoutons, 100);
+            }
         });
         
         observer.observe(document.body, {
             childList: true,
             subtree: true
         });
+        
+        function styliserTousLesBoutons() {
+            // Récupérer TOUS les boutons dans les cartes
+            const cards = document.querySelectorAll('.card-body');
+            
+            cards.forEach(card => {
+                // Boutons normaux
+                const buttons = card.querySelectorAll('button, input[type="submit"], input[type="button"]');
+                
+                buttons.forEach(button => {
+                    // S'assurer que le bouton est visible
+                    button.style.display = 'inline-block';
+                    button.style.visibility = 'visible';
+                    button.style.opacity = '1';
+                    
+                    const buttonText = button.textContent || button.value || '';
+                    
+                    // Appliquer la classe correcte selon le texte
+                    if (buttonText.includes('Supprimer') || buttonText.includes('Delete') || buttonText.includes('Confirmer')) {
+                        button.style.backgroundColor = '#dc3545';
+                        button.style.borderColor = '#dc3545';
+                        button.style.color = 'white';
+                    } else if (buttonText.includes('Annuler') || buttonText.includes('Cancel') || buttonText.includes('Fermer')) {
+                        button.style.backgroundColor = '#6c757d';
+                        button.style.borderColor = '#6c757d';
+                        button.style.color = 'white';
+                    } else if (button.type === 'submit' || buttonText.includes('Save') || buttonText.includes('Update') || buttonText.includes('Enregistrer')) {
+                        button.style.backgroundColor = '#FF7F00';
+                        button.style.borderColor = '#FF7F00';
+                        button.style.color = 'white';
+                    }
+                    
+                    // Ajouter padding si manquant
+                    if (!button.style.padding || button.style.padding === '') {
+                        button.style.padding = '10px 24px';
+                    }
+                    
+                    // Ajouter border radius
+                    if (!button.style.borderRadius || button.style.borderRadius === '') {
+                        button.style.borderRadius = '6px';
+                    }
+                    
+                    // Ajouter font weight
+                    if (!button.style.fontWeight || button.style.fontWeight === '') {
+                        button.style.fontWeight = '700';
+                    }
+                    
+                    // S'assurer que le bouton n'est pas caché
+                    button.classList.add('btn-visible');
+                });
+            });
+            
+            // Cibler spécifiquement les boutons Livewire
+            const livewireButtons = document.querySelectorAll('[wire\\:submit] button, button[wire\\:click]');
+            livewireButtons.forEach(button => {
+                button.style.backgroundColor = '#FF7F00';
+                button.style.color = 'white';
+                button.style.padding = '10px 24px';
+                button.style.borderRadius = '6px';
+                button.style.fontWeight = '700';
+                button.style.border = 'none';
+                button.style.cursor = 'pointer';
+            });
+        }
     });
+    
+    // Style supplémentaire injecté dynamiquement
+    const style = document.createElement('style');
+    style.textContent = `
+        .btn-visible {
+            display: inline-block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        
+        button, input[type="submit"], input[type="button"] {
+            display: inline-block !important;
+        }
+        
+        /* Correction spécifique pour les problèmes d'affichage */
+        .card-body [wire\\:submit] {
+            display: block !important;
+        }
+    `;
+    document.head.appendChild(style);
 </script>
 @endpush

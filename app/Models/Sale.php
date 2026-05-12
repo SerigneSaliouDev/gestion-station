@@ -12,6 +12,7 @@ class Sale extends Model
     protected $fillable = [
         'station_id',
         'fuel_type',
+        'fuel_type_display', // AJOUTEZ CECI
         'quantity',
         'unit_price',
         'total_amount',
@@ -21,14 +22,16 @@ class Sale extends Model
         'payment_method',
         'pump_number',
         'shift_id',
-        'tank_id',           // NOUVEAU
-        'tank_number',       // NOUVEAU
+        'tank_id',
+        'tank_number',
         'pump_id',
         'recorded_by',
         'verified_by',
         'verified_at',
         'cancelled_at',
-        'notes'
+        'notes',
+        'shift_saisie_id', // AJOUTEZ POUR LES SHIFTS
+        'source' // AJOUTEZ SI NÉCESSAIRE
     ];
 
     protected $casts = [
@@ -91,14 +94,16 @@ class Sale extends Model
     {
         parent::boot();
 
-        // Après création d'une vente, mettre à jour le stock de la cuve
+        // COMMENTEZ CETTE SECTION - elle cause une double déduction
+        /*
         static::created(function ($sale) {
             if ($sale->tank_id) {
                 $sale->updateTankStock();
             }
         });
+        */
 
-        // Après annulation d'une vente, restaurer le stock
+        // Gardez celui-ci pour l'annulation
         static::updated(function ($sale) {
             if ($sale->wasChanged('cancelled_at') && $sale->cancelled_at) {
                 $sale->restoreTankStock();

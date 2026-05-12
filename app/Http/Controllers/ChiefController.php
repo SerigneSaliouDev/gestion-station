@@ -480,32 +480,34 @@ private function getSalesFromTanks($selectedStation = null)
             $query->where('station_id', $selectedStation->id);
         }
         
-        // 1. Ventes du mois (uniquement par mois, pas par année)
+        // 1. Ventes du mois
         $monthQuery = clone $query;
         $monthSales = $monthQuery->whereMonth('movement_date', Carbon::now()->month);
         
-        
-        // 2. Ventes du jour (attention si vos données sont en 2026)
+        // 2. Ventes du jour
         $todayQuery = clone $query;
-        $currentYear = Carbon::now()->year;
-        
-        // Si vos données sont en 2026, ajustez la date
-        if ($currentYear == 2025) {
-            
-            $todaySales = $todayQuery->whereDate('movement_date', '2026-01-15');
-        } else {
-            $todaySales = $todayQuery->whereDate('movement_date', Carbon::today());
-        }
+        $todaySales = $todayQuery->whereDate('movement_date', Carbon::today());
         
         // 3. Total toutes ventes
         $allTimeTotal = $query->sum('total_amount');
         
+        // FIX: Use get() and sum manually for ABS(quantity)
+        $monthMovements = $monthSales->get();
+        $monthLitres = $monthMovements->sum(function($movement) {
+            return abs($movement->quantity);
+        });
+        
+        $todayMovements = $todaySales->get();
+        $todayLitres = $todayMovements->sum(function($movement) {
+            return abs($movement->quantity);
+        });
+        
         return [
             'month_total' => $monthSales->sum('total_amount') ?? 0,
-            'month_litres' => $monthSales->sum(DB::raw('ABS(quantity)')) ?? 0,
+            'month_litres' => $monthLitres,
             'month_count' => $monthSales->count() ?? 0,
             'today_total' => $todaySales->sum('total_amount') ?? 0,
-            'today_litres' => $todaySales->sum(DB::raw('ABS(quantity)')) ?? 0,
+            'today_litres' => $todayLitres,
             'today_count' => $todaySales->count() ?? 0,
             'all_time_total' => $allTimeTotal ?? 0
         ];
@@ -518,7 +520,18 @@ private function getSalesFromTanks($selectedStation = null)
         return $this->emptySalesResult();
     }
 }
-
+    private function emptySalesResult()
+    {
+        return [
+            'month_total' => 0,
+            'month_litres' => 0,
+            'month_count' => 0,
+            'today_total' => 0,
+            'today_litres' => 0,
+            'today_count' => 0,
+            'all_time_total' => 0
+        ];
+    }
 /**
  * Récupérer les ventes récentes depuis les tanks
  */
@@ -626,11 +639,10 @@ private function getTankStocks($selectedStation = null)
     
     return $stocks;
 }
-   private function getCombinedSalesLast7Days($selectedStation = null)
+private function getCombinedSalesLast7Days($selectedStation = null)
 {
-   
-    $endDate = Carbon::now(); // Aujourd'hui
-    $startDate = $endDate->copy()->subDays(6); // Il y a 7 jours
+    $endDate = Carbon::now();
+    $startDate = $endDate->copy()->subDays(6);
     
     $dates = [];
     for ($i = 0; $i < 7; $i++) {
@@ -647,12 +659,6 @@ private function getTankStocks($selectedStation = null)
         ];
     }
     
-    \Log::info('7 Days Sales - Date Range', [
-        'start_date' => $startDate->format('Y-m-d'),
-        'end_date' => $endDate->format('Y-m-d'),
-        'selected_station' => $selectedStation ? $selectedStation->id : 'all'
-    ]);
-    
     // 1. Ventes des shifts
     $shiftQuery = ShiftSaisie::where('statut', 'valide')
         ->whereBetween('date_shift', [$startDate, $endDate]);
@@ -666,12 +672,7 @@ private function getTankStocks($selectedStation = null)
         ->get()
         ->keyBy('date');
     
-    \Log::info('Shift Sales Data', [
-        'count' => $shiftSales->count(),
-        'dates' => $shiftSales->keys()->toArray()
-    ]);
-    
-    // 2. Ventes des tanks
+    // 2. Ventes des tanks - FIX: Use get() and calculate manually
     $tankQuery = StockMovement::where('movement_type', 'vente')
         ->whereBetween('movement_date', [$startDate, $endDate]);
     
@@ -679,42 +680,35 @@ private function getTankStocks($selectedStation = null)
         $tankQuery->where('station_id', $selectedStation->id);
     }
     
-    $tankSales = $tankQuery->selectRaw('DATE(movement_date) as date, SUM(total_amount) as sales, SUM(ABS(quantity)) as litres')
-        ->groupBy('date')
-        ->get()
-        ->keyBy('date');
+    $tankMovements = $tankQuery->get();
     
-    \Log::info('Tank Sales Data', [
-        'count' => $tankSales->count(),
-        'dates' => $tankSales->keys()->toArray(),
-        'sample' => $tankSales->take(3)->map(function($item) {
-            return [
-                'date' => $item->date,
-                'sales' => $item->sales,
-                'litres' => $item->litres
+    // Group tank sales by date manually
+    $tankSalesByDate = [];
+    foreach ($tankMovements as $movement) {
+        $date = $movement->movement_date->format('Y-m-d');
+        if (!isset($tankSalesByDate[$date])) {
+            $tankSalesByDate[$date] = [
+                'sales' => 0,
+                'litres' => 0
             ];
-        })->values()
-    ]);
+        }
+        $tankSalesByDate[$date]['sales'] += $movement->total_amount;
+        $tankSalesByDate[$date]['litres'] += abs($movement->quantity);
+    }
     
     // 3. Combiner les données
     foreach ($dates as &$dayData) {
         $date = $dayData['full_date'];
         
         $shiftData = $shiftSales[$date] ?? null;
-        $tankData = $tankSales[$date] ?? null;
+        $tankData = $tankSalesByDate[$date] ?? null;
         
         $dayData['shift_sales'] = $shiftData ? (float)$shiftData->sales : 0;
         $dayData['shift_litres'] = $shiftData ? (float)$shiftData->litres : 0;
-        $dayData['tank_sales'] = $tankData ? (float)$tankData->sales : 0;
-        $dayData['tank_litres'] = $tankData ? (float)$tankData->litres : 0;
+        $dayData['tank_sales'] = $tankData ? (float)$tankData['sales'] : 0;
+        $dayData['tank_litres'] = $tankData ? (float)$tankData['litres'] : 0;
         $dayData['total_sales'] = $dayData['shift_sales'] + $dayData['tank_sales'];
         $dayData['total_litres'] = $dayData['shift_litres'] + $dayData['tank_litres'];
-        
-        \Log::info('Day Data ' . $date, [
-            'shift_sales' => $dayData['shift_sales'],
-            'tank_sales' => $dayData['tank_sales'],
-            'total_sales' => $dayData['total_sales']
-        ]);
     }
     
     return $dates;
@@ -1130,7 +1124,6 @@ public function showValidation($id)
         
         return redirect()->route('chief.validations')->with('success', 'Saisie rejetée!');
     }
-
 public function rapportsStations(Request $request)
 {
     $startDate = $request->input('start_date', now()->startOfMonth()->format('Y-m-d'));
@@ -1163,6 +1156,8 @@ public function rapportsStations(Request $request)
     
     foreach ($stations as $station) {
         $performance = $this->calculateStationPerformance($station->id, $startDate, $endDate);
+        // FIX: Add the station object to the performance array
+        $performance['station'] = $station;
         $stationPerformances[] = $performance;
         $totalVentes += $performance['total_ventes'];
     }
@@ -1194,7 +1189,6 @@ public function rapportsStations(Request $request)
     
     // Répartition par carburant
     $fuelDistribution = $this->calculateFuelDistribution($startDate, $endDate, $stationId);
-    
     
     $tankLevelsData = [];
     foreach ($stations as $station) {
@@ -1259,114 +1253,86 @@ public function rapportsStations(Request $request)
         ];
     }
     
+    // Calculer le score de performance
 
-    /**
-     * Calculer la performance d'une station
-     */
     private function calculateStationPerformance($stationId, $startDate, $endDate)
 {
-    $station = Station::find($stationId);
-    
-    if (!$station) {
+    try {
+        // Add time to cover full days
+        $startDateTime = $startDate . ' 00:00:00';
+        $endDateTime = $endDate . ' 23:59:59';
+        
+        // Calculate total sales (quantity) - FIX: Use sum with condition
+        $totalVentes = StockMovement::where('station_id', $stationId)
+            ->where('movement_type', 'vente')
+            ->whereBetween('movement_date', [$startDate, $endDate])
+            ->sum('total_amount');
+        
+        // Calculate total quantity in litres
+        $totalLitres = StockMovement::where('station_id', $stationId)
+            ->where('movement_type', 'vente')
+            ->whereBetween('movement_date', [$startDate, $endDate])
+            ->get()
+            ->sum(function($movement) {
+                return abs($movement->quantity);
+            });
+        
+        // Get station name
+        $station = Station::find($stationId);
+        
+        // Get shift sales
+        $shiftSales = ShiftSaisie::where('station_id', $stationId)
+            ->where('statut', 'valide')
+            ->whereBetween('date_shift', [$startDate, $endDate])
+            ->sum('total_ventes');
+        
+        // Get tank sales (already calculated above)
+        $tankSales = $totalVentes;
+        
+        // Calculate number of shifts
+        $shiftsCount = ShiftSaisie::where('station_id', $stationId)
+            ->where('statut', 'valide')
+            ->whereBetween('date_shift', [$startDate, $endDate])
+            ->count();
+        
+        // Calculate average error
+        $avgEcart = ShiftSaisie::where('station_id', $stationId)
+            ->where('statut', 'valide')
+            ->whereBetween('date_shift', [$startDate, $endDate])
+            ->avg('ecart_final') ?? 0;
+        
         return [
-            'station' => null,
+            'station_id' => $stationId,
+            'station_name' => $station ? $station->nom : 'Unknown',
+            'total_ventes' => $totalVentes,
+            'total_litres' => $totalLitres,
+            'shift_sales' => $shiftSales,
+            'tank_sales' => $tankSales,
+            'shifts_count' => $shiftsCount,
+            'avg_ecart' => $avgEcart,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+        ];
+        
+    } catch (\Exception $e) {
+        Log::error("Error calculating performance for station {$stationId}: " . $e->getMessage());
+        
+        return [
+            'station_id' => $stationId,
+            'station_name' => 'Error',
             'total_ventes' => 0,
             'total_litres' => 0,
+            'shift_sales' => 0,
+            'tank_sales' => 0,
             'shifts_count' => 0,
             'avg_ecart' => 0,
-            'par_carburant' => [
-                'gasoil' => ['montant' => 0, 'litres' => 0, 'pourcentage' => 0],
-                'super' => ['montant' => 0, 'litres' => 0, 'pourcentage' => 0]
-            ],
-            'performance' => 'Inactif'
+            'start_date' => $startDate,
+            'end_date' => $endDate,
         ];
     }
-    
-    // Récupérer les shifts de la période
-    $shifts = ShiftSaisie::where('station_id', $stationId)
-        ->whereBetween('date_shift', [$startDate, $endDate])
-        ->where('statut', 'valide')
-        ->get();
-    
-    // CORRECTION: Récupérer les ventes des tanks
-    $tankSales = StockMovement::where('station_id', $stationId)
-        ->where('movement_type', 'vente')
-        ->whereBetween('movement_date', [$startDate, $endDate])
-        ->get();
-    
-    // Totaux shifts
-    $shiftVentes = $shifts->sum('total_ventes');
-    $shiftLitres = $shifts->sum('total_litres');
-    $shiftsCount = $shifts->count();
-    
-    // Totaux tanks
-    $tankVentes = $tankSales->sum('total_amount');
-    $tankLitres = $tankSales->sum(DB::raw('ABS(quantity)'));
-    
-    // Totaux combinés
-    $totalVentes = $shiftVentes + $tankVentes;
-    $totalLitres = $shiftLitres + $tankLitres;
-    
-    // Écart moyen (seulement pour les shifts)
-    $avgEcart = $shiftsCount > 0 ? $shifts->avg('ecart_final') : 0;
-    
-    // Ventes par carburant (combiner shifts et tanks)
-    $parCarburant = [
-        'gasoil' => [
-            'montant' => $shifts->sum('montant_gazole') + 
-                        $tankSales->where('fuel_type', 'gasoil')->sum('total_amount'),
-            'litres' => $shifts->sum('litres_gazole') + 
-                       $tankSales->where('fuel_type', 'gasoil')->sum(DB::raw('ABS(quantity)')),
-            'pourcentage' => $totalVentes > 0 ? 
-                (($shifts->sum('montant_gazole') + $tankSales->where('fuel_type', 'gasoil')->sum('total_amount')) / $totalVentes) * 100 : 0
-        ],
-
-        'super' => [
-            'montant' => $shifts->sum('montant_super') + 
-                        $tankSales->where('fuel_type', 'super')->sum('total_amount'),
-            'litres' => $shifts->sum('litres_super') + 
-                       $tankSales->where('fuel_type', 'super')->sum(DB::raw('ABS(quantity)')),
-            'pourcentage' => $totalVentes > 0 ? 
-                (($shifts->sum('montant_super') + $tankSales->where('fuel_type', 'super')->sum('total_amount')) / $totalVentes) * 100 : 0
-        ],
-
-        'essence pirogue' => [
-            'montant' => $shifts->sum('montant_essence pirogue') + 
-                        $tankSales->where('fuel_type', 'essence pirogue')->sum('total_amount'),
-            'litres' => $shifts->sum('litres_essence pirogue') + 
-                       $tankSales->where('fuel_type', 'essence pirogue')->sum(DB::raw('ABS(quantity)')),
-            'pourcentage' => $totalVentes > 0 ? 
-                (($shifts->sum('montant_essence pirogue') + $tankSales->where('fuel_type', 'essence pirogue')->sum('total_amount')) / $totalVentes) * 100 : 0
-        ],
-
-
-   
-    ];
-    
-    // Score de performance
-    $performance = $this->calculatePerformanceScore($totalVentes, $shiftsCount, $avgEcart);
-    
-    return [
-        'station' => $station,
-        'total_ventes' => $totalVentes,
-        'total_litres' => $totalLitres,
-        'shifts_count' => $shiftsCount,
-        'avg_ecart' => $avgEcart,
-        'par_carburant' => $parCarburant,
-        'performance' => $performance,
-        'debug' => [
-            'shift_ventes' => $shiftVentes,
-            'tank_ventes' => $tankVentes,
-            'shift_count' => $shiftsCount,
-            'tank_count' => $tankSales->count()
-        ]
-    ];
 }
 
-    /**
-     * Calculer le score de performance
-     */
-    private function calculatePerformanceScore($totalVentes, $shiftsCount, $avgEcart)
+   private function calculatePerformanceScore($totalVentes, $shiftsCount, $avgEcart)
     {
         if ($shiftsCount == 0) return 'Inactif';
         
@@ -1417,7 +1383,10 @@ public function rapportsStations(Request $request)
     
     // CORRECTION ICI: Calculer le volume total
     $shiftVolume = $shifts->sum('total_litres'); // Volume des shifts
-    $tankVolume = $tankSales->sum(DB::raw('ABS(quantity)')); 
+    $tankVolume = $tankSales->sum(function($sale) {
+    return abs($sale->quantity);
+    });
+
     $volumeTotal = $shiftVolume + $tankVolume; // Volume total
     
     \Log::info('Volume Total Debug', [
@@ -2096,15 +2065,7 @@ public function genererRapportPDF(Request $request)
         return view('chief.stations.create', compact('managers'));
     }
 
-    /**
-     * Enregistrer une nouvelle station
-     */
-
-   
-
-    /**
-     * Méthodes pour les stocks du Chief (si vous avez besoin d'accéder aux stocks)
-     */
+    
     
     public function stockReceptions(Request $request)
     {

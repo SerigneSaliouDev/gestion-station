@@ -11,6 +11,9 @@ use App\Models\Tank;
 use App\Traits\FuelTypeTrait;
 use App\Models\StockMovement;
 use App\Models\ShiftSaisie;
+use App\Models\ShiftPompeDetail; // Ajoutez cette ligne
+use App\Models\Depense; // Ajoutez cette ligne
+use App\Services\StockOperationService; // AJOUTEZ CETTE LIGNE
 use Carbon\Carbon;
 
 class SaleController extends Controller
@@ -220,23 +223,59 @@ class SaleController extends Controller
     /**
      * Afficher la liste des ventes
      */
-        public function index(Request $request)
-    {
-        $user = Auth::user();
-        $stationId = $user->station_id;
-        
-        $query = Sale::with('tank')
-            ->where('station_id', $stationId)
-            ->whereNull('cancelled_at')
-            ->orderBy('sale_date', 'desc');
-            
-        $sales = $query->paginate(20);
-        
-        // Cuves pour filtre
-        $tanks = Tank::where('station_id', $stationId)->get();
-        
-        return view('manager.sales.index', compact('sales', 'tanks', 'request'));
+    public function index(Request $request)
+{
+    $user = Auth::user();
+    $stationId = $user->station_id;
+
+    $query = Sale::with('tank')
+        ->where('station_id', $stationId)
+        ->whereNull('cancelled_at');
+
+    // Filtres
+    if ($request->filled('fuel_type')) {
+        $query->where('fuel_type', $request->fuel_type);
     }
+    if ($request->filled('payment_method')) {
+        $query->where('payment_method', $request->payment_method);
+    }
+    if ($request->filled('start_date')) {
+        $query->whereDate('sale_date', '>=', $request->start_date);
+    }
+    if ($request->filled('end_date')) {
+        $query->whereDate('sale_date', '<=', $request->end_date);
+    }
+
+    $sales = $query->orderBy('sale_date', 'desc')->paginate(20);
+
+    // Stats
+    $statsQuery = Sale::where('station_id', $stationId)->whereNull('cancelled_at');
+    $stats = [
+        'total_sales'  => $statsQuery->count(),
+        'total_amount' => $statsQuery->sum('total_amount'),
+        'total_liters' => $statsQuery->sum('quantity'),
+        'avg_amount'   => $statsQuery->avg('total_amount') ?? 0,
+    ];
+
+    // Cuves et types carburant
+    $tanks = Tank::where('station_id', $stationId)->get();
+    $fuelTypes = Sale::where('station_id', $stationId)
+        ->whereNull('cancelled_at')
+        ->distinct()
+        ->pluck('fuel_type')
+        ->mapWithKeys(fn($t) => [$t => $this->getFuelTypeDisplay($t)]);
+
+    $paymentMethods = [
+        'cash'         => 'Espèces',
+        'card'         => 'Carte bancaire',
+        'mobile_money' => 'Mobile Money',
+        'credit'       => 'Crédit',
+    ];
+
+    return view('manager.sales.index', compact(
+        'sales', 'tanks', 'stats', 'fuelTypes', 'paymentMethods'
+    ));
+}
     public function cancel($id)
     {
         $sale = Sale::findOrFail($id);

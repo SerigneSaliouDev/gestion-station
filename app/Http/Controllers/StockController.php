@@ -68,7 +68,8 @@ class StockController extends Controller
         foreach($fuelTypes as $fuelType) {
             // Filtrer les jaugeages par type de carburant
             $levelsOfType = $recentLevels->filter(function($level) use ($fuelType) {
-                return $level->tank && stripos($level->tank->fuel_type, $fuelType) !== false;
+                $tankFuelType = optional($level->tank)->fuel_type;
+                return is_string($tankFuelType) && stripos($tankFuelType, $fuelType) !== false;
             });
             
             $latestLevel = $levelsOfType->first();

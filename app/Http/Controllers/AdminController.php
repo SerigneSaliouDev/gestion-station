@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\UserWelcomeMail;
 use App\Mail\WelcomeUser;
 use App\Models\ActivityLog;
 use App\Models\DataCorrection;
@@ -14,10 +15,10 @@ use App\Models\StockMovement;
 use App\Models\TankLevel;
 use App\Models\User;
 use Carbon\Carbon;
-use App\Mail\UserWelcomeMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
 
 class AdminController extends Controller
@@ -1217,22 +1218,27 @@ public function store(Request $request)
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'role' => 'required|in:administrateur,manager,chief,user',
+            'role' => 'required|in:administrateur,manager,charge-operations,user',
             'statut' => 'required|in:active,inactive,pending',
             'station_id' => 'nullable|exists:stations,id',
-            'send_welcome_email' => 'nullable|in:0,1',
+            'send_welcome_email' => 'nullable|boolean',
         ]);
         
         // Générer un mot de passe temporaire
-        $password = \Str::random(10);
+        $plainPassword = \Str::random(10);
+        $hashedPassword = Hash::make($plainPassword);
         
-        // IMPORTANT: S'assurer que l'utilisateur est actif
+        // Log pour débogage
+        \Log::info('Création utilisateur', [
+            'email' => $validated['email'],
+            'plain_password' => $plainPassword,
+            'hashed_password' => $hashedPassword
+        ]);
+        
         $isActive = $validated['statut'] == 'active';
-        
-        // Logique d'assignation de station
         $stationId = $validated['station_id'] ?? null;
         
-        // Pour les managers, vérifier la station
+        // Vérifier si le manager existe déjà
         if ($validated['role'] === 'manager' && $stationId) {
             $existingManager = User::role('manager')
                 ->where('station_id', $stationId)
@@ -1241,90 +1247,65 @@ public function store(Request $request)
             if ($existingManager) {
                 return redirect()->back()
                     ->withInput()
-                    ->with('error', 'Cette station a déjà un manager. Veuillez choisir une autre station.');
+                    ->with('error', 'Cette station a déjà un manager.');
             }
         }
         
-        // CRÉER L'UTILISATEUR AVEC TOUS LES CHAMPS NÉCESSAIRES
+        // CRÉER L'UTILISATEUR
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
-            'password' => bcrypt($password),
+            'password' => $hashedPassword, // Haché
             'role' => $validated['role'],
             'statut' => $validated['statut'],
             'station_id' => $stationId,
             'is_active' => $isActive,
-            'email_verified_at' => now(), // ← IMPORTANT: Marquer l'email comme vérifié
+            'email_verified_at' => now(),
             'created_by' => auth()->id(),
         ]);
         
-        // Vérifier que le mot de passe est bien stocké
-        if (empty($user->password)) {
-            \Log::error('Le mot de passe n\'a pas été enregistré pour l\'utilisateur: ' . $user->id);
-            throw new \Exception('Erreur lors de l\'enregistrement du mot de passe');
-        }
+        // Vérifier que le mot de passe a été bien stocké
+        $savedUser = User::find($user->id);
+        \Log::info('Utilisateur créé', [
+            'id' => $savedUser->id,
+            'has_password' => !empty($savedUser->password),
+            'password_length' => strlen($savedUser->password ?? ''),
+            'can_login' => Hash::check($plainPassword, $savedUser->password)
+        ]);
         
-        // Assigner le rôle avec spatie
-        try {
-            $user->assignRole($validated['role']);
-        } catch (\Exception $e) {
-            \Log::error('Erreur assignation rôle spatie: ' . $e->getMessage());
-        }
+        // Assigner le rôle
+        $user->assignRole($validated['role']);
         
-        // Si manager avec station, mettre à jour la station
+        // Mettre à jour la station si manager
         if ($validated['role'] === 'manager' && $stationId) {
             Station::where('id', $stationId)->update(['manager_id' => $user->id]);
         }
         
         // ENVOYER L'EMAIL DE BIENVENUE
-        if ($request->has('send_welcome_email') && $request->send_welcome_email == '1') {
+        if ($request->has('send_welcome_email') && $request->send_welcome_email) {
             try {
-                \Mail::to($user->email)->send(new \App\Mail\WelcomeUser($user, $password));
-                \Log::info('Email de bienvenue envoyé à ' . $user->email);
+                // Charger la relation station pour l'email
+                $user->load('station');
+                
+                \Mail::to($user->email)->send(new \App\Mail\WelcomeUser($user, $plainPassword));
+                \Log::info('Email envoyé à ' . $user->email);
+                $message = 'Utilisateur créé avec succès. Un email a été envoyé.';
             } catch (\Exception $e) {
-                \Log::error('Erreur envoi email de bienvenue: ' . $e->getMessage());
+                \Log::error('Erreur envoi email: ' . $e->getMessage());
+                $message = "Utilisateur créé mais email non envoyé. Mot de passe: {$plainPassword}";
             }
-        }
-        
-        // Log de l'activité
-        try {
-            ActivityLog::create([
-                'user_id' => auth()->id(),
-                'action' => 'user_created',
-                'description' => "Utilisateur {$user->name} créé avec le rôle {$validated['role']}",
-                'details' => json_encode([
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'password' => $password, // Ne pas log en production
-                    'role' => $validated['role'],
-                    'station_id' => $stationId,
-                    'welcome_email_sent' => ($request->send_welcome_email == '1')
-                ])
-            ]);
-        } catch (\Exception $e) {
-            \Log::error('Erreur création log: ' . $e->getMessage());
-        }
-        
-        // Message de succès
-        $message = 'Utilisateur créé avec succès.';
-        if ($request->send_welcome_email == '1') {
-            $message .= ' Un email de bienvenue a été envoyé.';
         } else {
-            $message .= ' Mot de passe temporaire: ' . $password;
+            $message = "Utilisateur créé avec succès. Mot de passe temporaire: {$plainPassword}";
         }
         
         return redirect()->route('admin.users.show', $user)
             ->with('success', $message);
             
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return redirect()->back()
-            ->withInput()
-            ->withErrors($e->errors());
     } catch (\Exception $e) {
         \Log::error('Erreur création utilisateur: ' . $e->getMessage());
         return redirect()->back()
             ->withInput()
-            ->with('error', 'Erreur lors de la création de l\'utilisateur: ' . $e->getMessage());
+            ->with('error', 'Erreur: ' . $e->getMessage());
     }
 }
     

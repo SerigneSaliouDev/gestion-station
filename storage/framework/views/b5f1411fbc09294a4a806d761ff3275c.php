@@ -67,7 +67,7 @@
         }
 
         .company-logo {
-            max-width: 200px;
+            max-width: 800px;
             width: auto;
             height: auto;
             max-height: 120px;
@@ -402,16 +402,7 @@
             </button>
         </form>
 
-        <div class="register-link">
-            <p>Vous n'avez pas de compte ? 
-                <?php if(Route::has('register')): ?>
-                    <a href="<?php echo e(route('register')); ?>">Créer un compte</a>
-                <?php else: ?>
-                    <a href="#">Contacter le support</a>
-                <?php endif; ?>
-            </p>
-        </div>
-
+     
         <div class="copyright">
             © 2025 ODYSSEE ÉNERGIE. Tous droits réservés.<br>
             <a href="#">Conditions d'utilisation</a> | <a href="#">Politique de confidentialité</a>
